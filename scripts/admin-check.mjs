@@ -26,7 +26,7 @@ function person() {
     }
     return raw ? response : { status: response.status, json: await response.json().catch(() => null) };
   }
-  return { call, jar };
+  return { call, jar, ip };
 }
 
 // Room codes carry a tag so the script can be run again against the same server.
@@ -34,6 +34,20 @@ const tag = Array.from({ length: 5 }, () => "abcdefghjkmnpqrstuvwxyz"[Math.floor
 const guest = person();
 const admin = person();
 const other = person();
+
+// Start from a locked site whatever state the server was left in (a fresh database is locked already).
+{
+  const setup = person();
+  await setup.call("/api/admin/login", { method: "POST", body: { password } });
+  await setup.call("/api/admin", { method: "POST", body: { type: "lock" } });
+}
+
+// --- the open/locked check for the lock screen ---
+{
+  const lockedCheck = await person().call("/api/open");
+  const keys = Object.keys(lockedCheck.json ?? {});
+  check("anyone can ask whether the site is open, and only that is answered", lockedCheck.status === 200 && lockedCheck.json?.open === false && keys.length === 1, JSON.stringify(lockedCheck));
+}
 
 // --- locked by default ---
 let r = await guest.call("/api/rooms", { method: "POST", body: { name: "Guest", code: `lockedroom${tag}` } });
@@ -52,6 +66,8 @@ check("a wrong password is refused", r.status === 401, JSON.stringify(r));
 r = await admin.call("/api/admin/login", { method: "POST", body: { password, open: true } });
 check("the right password signs in and opens the site", r.status === 200 && r.json?.open === true, JSON.stringify(r));
 check("the sign-in cookie is set", !!admin.jar["screening-admin"]);
+r = await person().call("/api/open");
+check("the open check says so once the site is open", r.status === 200 && r.json?.open === true, JSON.stringify(r));
 
 // --- open: anyone can use it ---
 const pageOpen = await (await fetch(base + "/", { headers: { Cookie: "screening-lang=en" } })).text();
@@ -61,6 +77,21 @@ check("a guest can start a room once it is open", r.status === 201, JSON.stringi
 const roomId = r.json?.roomId;
 r = await other.call("/api/rooms", { method: "POST", body: { name: "Other", roomId } });
 check("another guest can join it", r.status === 201, JSON.stringify(r));
+
+// --- a link to a room that is not open: the page says so up front, within the same limit as joining ---
+{
+  const visitor = person();
+  const link = async id => (await (await fetch(`${base}/?room=${id}`, { headers: { Cookie: "screening-lang=en", "X-Forwarded-For": visitor.ip } })).text());
+  check("a link to a room that is open does not say it is gone", /roomGone\W+false/.test(await link(roomId)));
+  check("a link to a room that is not open says so", /roomGone\W+true/.test(await link(`nobody${tag}`)));
+  const prober = person();
+  const probe = async id => /roomGone\W+true/.test(await (await fetch(`${base}/?room=${id}`, { headers: { Cookie: "screening-lang=en", "X-Forwarded-For": prober.ip } })).text());
+  const answers = [];
+  for (let i = 0; i < 14; i++) answers.push(await probe(`probe${i}${tag}`));
+  check("asking about many missing rooms is limited like joining is", answers.slice(0, 10).every(Boolean) && !answers[13], answers.join(","));
+  r = await prober.call("/api/rooms", { method: "POST", body: { name: "Prober", roomId: `probe99${tag}` } });
+  check("the same limit refuses a join from that address", r.status === 429, JSON.stringify(r));
+}
 
 // --- admin gating on files ---
 r = await guest.call(`/api/rooms/${roomId}/library/upload?name=a.mp4`, { method: "PUT" });
@@ -113,22 +144,24 @@ const rid = made2.json?.roomId;
 await B.call("/api/rooms", { method: "POST", body: { name: "Ben", roomId: rid } });
 await C.call("/api/rooms", { method: "POST", body: { name: "Cy", roomId: rid } });
 const seen = [];
+let leftData = "";
 const abort2 = new AbortController();
 const stream2 = await fetch(`${base}/api/rooms/${rid}/events?since=0`, { headers: { Cookie: `screening-session=${B.jar["screening-session"]}`, "X-Forwarded-For": "10.9.8.8" }, signal: abort2.signal });
 const reading2 = (async () => {
   try {
     const decoder = new TextDecoder();
     for await (const chunk of stream2.body) {
-      for (const piece of decoder.decode(chunk).split("\n\n")) { const m = /^event: (\w+)/m.exec(piece); if (m) seen.push(m[1]); }
+      for (const piece of decoder.decode(chunk).split("\n\n")) { const m = /^event: (\w+)/m.exec(piece); if (m) { seen.push(m[1]); if (m[1] === "left") leftData = /^data: (.*)$/m.exec(piece)?.[1] ?? ""; } }
     }
     seen.push("(ended)");
   } catch { /* aborted */ }
 })();
 await new Promise(resolve => setTimeout(resolve, 300));
 r = await B.call(`/api/rooms/${rid}`, { method: "POST", body: { type: "leave" } });
-check("a person can leave a room", r.status === 204, JSON.stringify(r));
+check("a person can leave a room, and is told the room is still there", r.status === 200 && r.json?.closed === false, JSON.stringify(r));
 await new Promise(resolve => setTimeout(resolve, 300));
 check("the person who left is told, then their stream ends", seen.includes("left") && !seen.includes("kicked") && seen.includes("(ended)"), seen.join(","));
+check("the left event says the room is still open for others", leftData === JSON.stringify({ last: false }), leftData);
 r = await B.call(`/api/rooms/${rid}`);
 check("they are no longer in the room", r.status === 401, JSON.stringify(r));
 r = await admin.call("/api/admin/login", { method: "POST", body: { password } });
@@ -136,11 +169,34 @@ let list = (await admin.call("/api/admin")).json?.rooms.find(x => x.id === rid);
 check("the others are still in it", list?.members.length === 2, JSON.stringify(list));
 r = await A.call(`/api/rooms/${rid}`, { method: "POST", body: { type: "leave" } });
 list = (await admin.call("/api/admin")).json?.rooms.find(x => x.id === rid);
-check("when the host leaves, the next person becomes host", r.status === 204 && list?.members.length === 1 && list.members[0].host === true && list.members[0].name === "Cy", JSON.stringify(list));
+check("when the host leaves, the next person becomes host", r.status === 200 && r.json?.closed === false && list?.members.length === 1 && list.members[0].host === true && list.members[0].name === "Cy", JSON.stringify(list));
 r = await C.call(`/api/rooms/${rid}`, { method: "POST", body: { type: "leave" } });
 list = (await admin.call("/api/admin")).json?.rooms.find(x => x.id === rid);
-check("when the last person leaves, the room is gone", r.status === 204 && !list, JSON.stringify(list));
+check("when the last person leaves, the room is gone, and they are told so", r.status === 200 && r.json?.closed === true && !list, JSON.stringify(list));
 abort2.abort(); await reading2;
+
+// --- a pending "Ask host to play" must not outlive the person who asked ---
+{
+  const host = person(), viewer = person(), watcher = person();
+  const asked = await host.call("/api/rooms", { method: "POST", body: { name: "Hosty", code: `asking${tag}` } });
+  const askRoom = asked.json?.roomId;
+  await viewer.call("/api/rooms", { method: "POST", body: { name: "Viola", roomId: askRoom } });
+  await watcher.call("/api/rooms", { method: "POST", body: { name: "Wanda", roomId: askRoom } });
+  await viewer.call(`/api/rooms/${askRoom}`, { method: "POST", body: { type: "nudge" } });
+  let hostView = (await host.call(`/api/rooms/${askRoom}`)).json;
+  check("a viewer's request to play shows the host who asked", hostView?.wantPlay?.names?.includes("Viola"), JSON.stringify(hostView?.wantPlay));
+  await viewer.call(`/api/rooms/${askRoom}`, { method: "POST", body: { type: "leave" } });
+  hostView = (await host.call(`/api/rooms/${askRoom}`)).json;
+  const watcherView = (await watcher.call(`/api/rooms/${askRoom}`)).json;
+  check("when that viewer leaves, the request disappears for everyone", !hostView?.wantPlay && !watcherView?.wantPlay, JSON.stringify([hostView?.wantPlay, watcherView?.wantPlay]));
+  await viewer.call("/api/rooms", { method: "POST", body: { name: "Viola2", roomId: askRoom } });
+  await viewer.call(`/api/rooms/${askRoom}`, { method: "POST", body: { type: "nudge" } });
+  const viola2 = (await admin.call("/api/admin/login", { method: "POST", body: { password } }), (await admin.call("/api/admin")).json.rooms.find(x => x.id === askRoom)?.members.find(m => m.name === "Viola2"));
+  await admin.call("/api/admin", { method: "POST", body: { type: "kick", roomId: askRoom, memberId: viola2?.id } });
+  hostView = (await host.call(`/api/rooms/${askRoom}`)).json;
+  check("when that viewer is removed, the request disappears too", !hostView?.wantPlay, JSON.stringify(hostView?.wantPlay));
+  await admin.call("/api/admin", { method: "POST", body: { type: "closeRoom", roomId: askRoom } });
+}
 
 // --- locking again ---
 r = await admin.call("/api/admin", { method: "POST", body: { type: "lock" } });

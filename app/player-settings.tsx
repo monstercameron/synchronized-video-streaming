@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { captionLabel, commonLanguages } from "./i18n/caption-label";
 import { formatNumber } from "./i18n/format";
 import { LanguageSwitch, useI18n } from "./i18n";
+import { rovingRef } from "./roving";
 import { Slider, Switch } from "./settings-controls";
 import type { MediaInfo } from "./room-shared";
 import { updateSubtitleSettings, useSubtitleSettings } from "./subtitle-settings";
@@ -25,7 +26,7 @@ function QualityTab({ media, levels, activeLevel, quality, onQuality }: {
     return (
       <div className="set-group">
         <h3>{t("quality.title")}</h3>
-        <p className="set-note">{t("quality.single", { height: media.height, rate: formatNumber(locale, media.bitrate / 1e6, 1) })}</p>
+        <p className="set-note">{media.bitrate >= 50_000 ? t("quality.single", { height: media.height, rate: formatNumber(locale, media.bitrate / 1e6, 1) }) : t("quality.singleNoRate", { height: media.height })}</p>
       </div>
     );
   }
@@ -44,7 +45,7 @@ function QualityTab({ media, levels, activeLevel, quality, onQuality }: {
   return (
     <div className="set-group">
       <h3>{t("quality.title")}</h3>
-      <div className="quality-rows" role="radiogroup" aria-label={t("quality.title")}>
+      <div className="quality-rows" role="radiogroup" aria-label={t("quality.title")} ref={rovingRef}>
         {rows.map(row => (
           <button key={row.key} type="button" role="radio" aria-checked={row.selected} onClick={() => onQuality(row.apply)}>
             <span>{row.title}{row.playing && <small>{t("quality.playingNow")}</small>}</span>
@@ -109,6 +110,10 @@ function LanguageTab() {
 // ---------- The drawer ----------
 
 export function PlayerSettings(props: {
+  /** Fading out: the panel is on its way off the screen and takes no touches. */
+  closing?: boolean;
+  /** The panel has its own close button: the button that opened it can be scrolled out of sight in the row. */
+  onClose: () => void;
   tab: SettingsTab; onTab: (tab: SettingsTab) => void;
   media: MediaInfo; levels: Level[]; activeLevel: number; quality: Quality; onQuality: (quality: Quality) => void;
   muted: boolean; volume: number; volumeWorks: boolean; soft?: boolean; onMute: (muted: boolean) => void; onVolume: (volume: number) => void;
@@ -121,13 +126,14 @@ export function PlayerSettings(props: {
   else body = <LanguageTab />;
 
   return (
-    <section className="player-settings" aria-label={t("player.settingsAria")}>
+    <section className="player-settings" aria-label={t("player.settingsAria")} data-closing={!!props.closing} inert={!!props.closing}>
       <div className="settings-bar">
-        <div className="settings-tabs" role="tablist">
+        <div className="settings-tabs" role="tablist" aria-label={t("player.settingsAria")} ref={rovingRef}>
           {tabs.map(tab => (
             <button key={tab.id} type="button" role="tab" aria-selected={props.tab === tab.id} onClick={() => props.onTab(tab.id)}>{tab.label}</button>
           ))}
         </div>
+        <button className="settings-close" type="button" onClick={props.onClose} aria-label={t("common.close")}>✕</button>
       </div>
       <div className="settings-body" role="tabpanel">{body}</div>
     </section>

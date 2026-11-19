@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { formatNumber } from "./i18n/format";
 import { useI18n } from "./i18n";
-import { Segmented, Slider, Swatches, Switch, backgroundColors, outlineColors, seconds, textColors } from "./settings-controls";
+import { rovingRef } from "./roving";
+import { Segmented, Slider, Swatches, Switch, backgroundColors, outlineColors, seconds, signed, textColors } from "./settings-controls";
 import {
   defaultSubtitleSettings, fontStacks, getSubtitleSettings, resetSubtitleSettings, subtitlePresets, updateSubtitleSettings, useSubtitleSettings,
   type SubtitleFont,
@@ -14,25 +15,29 @@ import type { Caption } from "./use-subtitle-track";
  * The subtitles panel: opened by the Subtitles button, under the buttons. The track list is at the very top, so picking a
  * language is one tap; delay, stacking and the look of the text follow below.
  */
-export function SubtitlesPanel({ captions, trackIndex, onSelectTrack }: { captions: Caption[]; trackIndex: number; onSelectTrack: (index: number) => void }) {
+export function SubtitlesPanel({ captions, trackIndex, onSelectTrack, closing, onClose }: { captions: Caption[]; trackIndex: number; onSelectTrack: (index: number) => void; closing?: boolean; onClose: () => void }) {
   const { t, locale } = useI18n();
   const s = useSubtitleSettings();
   const set = updateSubtitleSettings;
   // Read the live value, not the last rendered one, so quick repeated taps all count.
   const nudge = (amount: number) => set({ delay: Math.round((getSubtitleSettings().delay + amount) * 10) / 10 });
 
-  const list = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement | null>(null);
+  const listRef = useCallback((element: HTMLDivElement | null) => { list.current = element; return rovingRef(element); }, []);
   // Open with the chosen track in view, however far down the list it is.
   useEffect(() => { list.current?.querySelector("[aria-checked=true]")?.scrollIntoView({ block: "nearest" }); }, []);
 
   return (
-    <section className="player-settings subs-panel" aria-label={t("player.subtitles")}>
-      <div className="settings-bar"><h2 className="panel-title">{t("player.subtitles")}</h2></div>
+    <section className="player-settings subs-panel" aria-label={t("player.subtitles")} data-closing={!!closing} inert={!!closing}>
+      <div className="settings-bar">
+        <h2 className="panel-title">{t("player.subtitles")}</h2>
+        <button className="settings-close" type="button" onClick={onClose} aria-label={t("common.close")}>✕</button>
+      </div>
       <div className="settings-body">
       <div className="set-group">
         <h3>{t("subs.track")}</h3>
         {captions.length ? (
-          <div className="segmented subs-tracks" role="radiogroup" aria-label={t("subs.trackLabel")} ref={list}>
+          <div className="segmented subs-tracks" role="radiogroup" aria-label={t("subs.trackLabel")} ref={listRef}>
             <button type="button" role="radio" aria-checked={trackIndex < 0} onClick={() => onSelectTrack(-1)}>{t("subs.off")}</button>
             {captions.map((caption, index) => (
               <button key={caption.source} type="button" role="radio" aria-checked={index === trackIndex} onClick={() => onSelectTrack(index)}>{caption.label}</button>
@@ -47,14 +52,14 @@ export function SubtitlesPanel({ captions, trackIndex, onSelectTrack }: { captio
         <h3>{t("subs.timing")}</h3>
         <Slider label={t("subs.delay")} value={s.delay} min={-10} max={10} step={0.1} format={value => seconds(locale, value)} onChange={delay => set({ delay })} />
         <div className="nudges" role="group" aria-label={t("subs.fineTune")}>
-          <button type="button" onClick={() => nudge(-0.5)}>−0.5</button>
-          <button type="button" onClick={() => nudge(-0.1)}>−0.1</button>
+          <button type="button" onClick={() => nudge(-0.5)}>{signed(locale, -0.5)}</button>
+          <button type="button" onClick={() => nudge(-0.1)}>{signed(locale, -0.1)}</button>
           <button type="button" onClick={() => set({ delay: 0 })} disabled={s.delay === 0}>{t("subs.reset")}</button>
-          <button type="button" onClick={() => nudge(0.1)}>+0.1</button>
-          <button type="button" onClick={() => nudge(0.5)}>+0.5</button>
+          <button type="button" onClick={() => nudge(0.1)}>{signed(locale, 0.1)}</button>
+          <button type="button" onClick={() => nudge(0.5)}>{signed(locale, 0.5)}</button>
         </div>
         <p className="set-note">{t("subs.delayNote")}</p>
-        <Slider label={t("subs.stay")} value={s.stay} min={0} max={8} step={0.5} format={value => (value ? `+${formatNumber(locale, value, 1)} s` : t("subs.valueOff"))} onChange={stay => set({ stay })} />
+        <Slider label={t("subs.stay")} value={s.stay} min={0} max={8} step={0.5} format={value => (value ? seconds(locale, value) : t("subs.valueOff"))} onChange={stay => set({ stay })} />
         <p className="set-note">{t("subs.stayNote")}</p>
         <Segmented label={t("subs.stack")} value={s.stack}
           options={[1, 2, 3, 4].map(n => ({ value: n, label: String(n) }))} onChange={stack => set({ stack })} />

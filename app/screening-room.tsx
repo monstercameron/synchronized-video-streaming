@@ -5,15 +5,16 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { FloatLayer, type FloatHandle } from "./float-layer";
 import { BubbleLayer, type BubbleHandle } from "./chat-bubbles";
 import { mentionsName } from "./chat-text";
+import { rovingRef } from "./roving";
 import { isRotatedView, landscapePhoneQuery } from "./screen-layout";
 import dynamic from "next/dynamic";
 import { RoomPanel } from "./room-panel";
 import { TopbarTitle } from "./topbar-title";
 import { usePlaybackQuality } from "./use-playback-quality";
 import { VideoPlayer } from "./video-player";
-import { LanguageSwitch, useI18n } from "./i18n";
+import { DefaultPasswordNotice, useDefaultPasswordNotice } from "./admin-ui";
+import { Failure, LanguageSwitch, problemOf, useI18n, type MessageKey, type Problem } from "./i18n";
 import { captionLabel } from "./i18n/caption-label";
-import type { ApiError } from "./i18n/core";
 import { openRoomStream } from "./room-stream";
 import { useKeyboardLayout } from "./use-keyboard-layout";
 import { applyPatch, cleanCodeInput, isCustomCode, isRoomId, mediaUrl, normalizeRoomId, type Reaction, type RoomCommand, type RoomMember, type RoomMessage, type RoomSnapshot, type RoomState, type StatePatch } from "./room-shared";
@@ -22,14 +23,15 @@ import { applyPatch, cleanCodeInput, isCustomCode, isRoomId, mediaUrl, normalize
 const VideoDetails = dynamic(() => import("./video-details").then(module => module.VideoDetails));
 const QuickReply = dynamic(() => import("./quick-reply").then(module => module.QuickReply));
 
-type Connection = "checking" | "join" | "connecting" | "connected" | "reconnecting" | "unavailable";
+// "gone": the link points at a room that is not open (closed, or never was). The person is offered a way forward instead of a name form.
+type Connection = "checking" | "join" | "connecting" | "connected" | "reconnecting" | "unavailable" | "gone";
 
-/** POST some JSON. A refusal becomes an Error whose message is already in the viewer's language (`describe` does that). */
-async function post(path: string, body: object, describe: (payload: ApiError | null) => string) {
+/** POST some JSON. A refusal becomes a Failure that keeps the server's error code, so whoever shows it can say it in the viewer's language. */
+async function post(path: string, body: object) {
   const result = await fetch(path, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
-  if (!result.ok) throw new Error(describe(await result.json().catch(() => null)));
+  if (!result.ok) throw new Failure(await result.json().catch(() => null));
   return result;
 }
 
@@ -44,18 +46,19 @@ function mergeMessages(current: RoomMessage[], incoming?: RoomMessage[]) {
   return fresh.length ? [...current, ...fresh].sort((a, b) => a.id - b.id).slice(-100) : current;
 }
 
-export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
+export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string; roomGone?: boolean }) {
   countRender("room");
   const i18n = useI18n();
-  const { t, fail, locale } = i18n;
+  const { t, say, locale } = i18n;
   // The live connection is set up once per room. It reads the language through this ref so that switching language
   // does not tear the connection down.
   const i18nRef = useRef(i18n);
   useEffect(() => { i18nRef.current = i18n; });
-  const describe = useCallback((payload: ApiError | null) => fail(payload, "err.request.failed"), [fail]);
   const [roomId, setRoomId] = useState(initialRoom);
   const [room, setRoom] = useState<RoomSnapshot>();
-  const [connection, setConnection] = useState<Connection>(initialRoom ? "checking" : "join");
+  // A link whose room is already known to be closed (or that is not shaped like a room at all) goes straight to the "not open" screen.
+  const [goneRoom, setGoneRoom] = useState(roomGone || (initialRoom && !isRoomId(initialRoom)) ? initialRoom : undefined);
+  const [connection, setConnection] = useState<Connection>(goneRoom ? "gone" : initialRoom ? "checking" : "join");
   const [clockOffset, setClockOffset] = useState<number>();
   const [attempt, setAttempt] = useState(0);
   const [name, setName] = useState("");
@@ -63,15 +66,38 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
   const [mode, setMode] = useState<"start" | "join">("start");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [code, setCode] = useState("");
-  const [error, setError] = useState("");
+  // Errors are kept as data (not as finished sentences), so switching language rewrites them.
+  const [error, setError] = useState<Problem>();
   // Why this browser is back at the join form: the admin removed it, or closed the room.
-  const [notice, setNotice] = useState<{ text: string; bad: boolean }>();
+  const [notice, setNotice] = useState<{ key: MessageKey; bad: boolean }>();
+  const defaultPassword = useDefaultPasswordNotice();
+  const [quickReply, setQuickReply] = useState<string>();
+  const [replyRequest, setReplyRequest] = useState<{ name: string; n: number }>();
   /** Back to the join form, saying why (or that leaving worked). Used when the admin removes this browser, closes the room, or the person leaves. */
-  const backToJoin = useCallback((key: "room.kicked" | "room.closed" | "room.left") => {
-    setNotice({ text: i18nRef.current.t(key), bad: key !== "room.left" });
+  const backToJoin = useCallback((key: "room.kicked" | "room.closed" | "room.left", closed?: boolean) => {
+    const was = latestRoom.current;
+    // This can run twice, from the stream and from the Leave button: the second time the room is already gone, so keep what the first set.
+    if (key === "room.left" && !was) return;
+    latestRoom.current = undefined;
+    if (key === "room.left") {
+      // The room closes when its last person leaves. Say so, and open the form on "Start a room" with the same code typed, since
+      // joining that code would only say that no room has it. Otherwise it most likely still exists and someone who left on purpose
+      // wants to come back: open "Join with a code" with the code typed.
+      const gone = closed ?? (was ? was.members.length <= 1 : false);
+      setNotice({ key: gone ? "room.leftLast" : "room.left", bad: false });
+      setMode(gone ? "start" : "join");
+      if (was && isCustomCode(was.id)) setCode(was.id);
+    } else {
+      setNotice({ key, bad: true });
+    }
     setRoom(undefined);
     setRoomId(undefined);
+    setGoneRoom(undefined);
     setConnection("join");
+    // Everything that belonged to the room closes with it, so none of it is open when this browser comes back.
+    setDetailsOpen(false);
+    setQuickReply(undefined);
+    setReplyRequest(undefined);
     const url = new URL(window.location.href);
     url.searchParams.delete("room");
     window.history.replaceState(null, "", url);
@@ -81,8 +107,6 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
   // A hidden input that is focused inside the tap on a chat bubble. Phones only raise the keyboard from within a tap,
   // and the real message box is not on screen yet (full screen is still closing), so this one holds the keyboard open.
   const focusProxy = useRef<HTMLInputElement>(null);
-  const [quickReply, setQuickReply] = useState<string>();
-  const [replyRequest, setReplyRequest] = useState<{ name: string; n: number }>();
   useKeyboardLayout();
   const { quality, setQuality, profile } = usePlaybackQuality();
   const latestRoom = useRef<RoomSnapshot>(undefined);
@@ -101,8 +125,8 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
     });
   }, []);
 
-  /** Tapping a bubble: leave full screen, then open the message box with "@name " typed and the keyboard up. */
-  const startReply = useCallback((name: string) => {
+  /** Tapping a bubble: leave full screen, then open the message box with "@name " typed and the keyboard up. With no name it just opens the message box. */
+  const startReply = useCallback((name = "") => {
     focusProxy.current?.focus({ preventScroll: true }); // Inside the tap, so the keyboard comes up.
     void (async () => {
       const wasFullscreen = !!document.fullscreenElement;
@@ -117,18 +141,19 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
     })();
   }, []);
 
+  /** Closing the reply bar (sent, Escape or ✕) puts focus back on the 💬 button that opened it, not on the page body. */
+  const closeQuickReply = useCallback(() => {
+    setQuickReply(undefined);
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(".live-chat")?.focus({ preventScroll: true }));
+  }, []);
+
   const addFloater = useCallback((reaction: Reaction) => {
     const current = latestRoom.current;
     floatLayer.current?.add(reaction, current?.members.find(member => member.id === reaction.authorId)?.name ?? "", reaction.authorId === current?.youId);
   }, []);
 
   useEffect(() => {
-    if (!roomId) return;
-    if (!isRoomId(roomId)) {
-      setConnection("unavailable");
-      setError(i18nRef.current.t("room.err.linkUnavailable"));
-      return;
-    }
+    if (!roomId || roomId === goneRoom) return;
     const endpoint = `/api/rooms/${roomId}`;
     const abort = new AbortController();
     let stream: { close: () => void } | undefined;
@@ -197,7 +222,7 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
       onRefused: (status, payload) => {
         if (abort.signal.aborted) return;
         if (status === 401) { setConnection("join"); return; }
-        setError(i18nRef.current.fail(payload, "err.connect.failed"));
+        setError({ key: "err.connect.failed", payload });
         setConnection("unavailable");
       },
       onEvent: (name, data, timing) => {
@@ -223,7 +248,7 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
           } else if (name === "kicked" || name === "closed" || name === "left") {
             // This browser was taken out of the room (or chose to leave). Stop listening and go back to the join form.
             stream?.close();
-            backToJoin(name === "kicked" ? "room.kicked" : name === "closed" ? "room.closed" : "room.left");
+            backToJoin(name === "kicked" ? "room.kicked" : name === "closed" ? "room.closed" : "room.left", name === "left" ? !!(JSON.parse(data) as { last?: boolean }).last : undefined);
           }
         } catch { /* A damaged event is skipped; the next state event repairs anything it carried. */ }
       },
@@ -241,7 +266,7 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
       clearInterval(clock);
       document.removeEventListener("visibilitychange", refreshClock);
     };
-  }, [roomId, attempt, addFloater, addBubble, backToJoin]);
+  }, [roomId, goneRoom, attempt, addFloater, addBubble, backToJoin]);
 
   async function join(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -252,18 +277,18 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
       body.roomId = roomId;
     } else if (mode === "join") {
       const target = normalizeRoomId(code);
-      if (!target) { setError(t("join.err.needCode")); return; }
+      if (!target) { setError({ key: "join.err.needCode" }); return; }
       body.roomId = target;
     } else if (code.trim()) {
       const chosen = cleanCodeInput(code);
-      if (!isCustomCode(chosen)) { setError(t("err.code.invalid")); return; }
+      if (!isCustomCode(chosen)) { setError({ key: "err.code.invalid" }); return; }
       body.code = chosen;
     }
     setJoining(true);
-    setError("");
+    setError(undefined);
     setNotice(undefined);
     try {
-      const response = await post("/api/rooms", body, describe);
+      const response = await post("/api/rooms", body);
       const result = await response.json() as { roomId: string };
       const url = new URL(window.location.href);
       url.searchParams.set("room", result.roomId);
@@ -272,17 +297,45 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
       if (roomId === result.roomId) setAttempt(value => value + 1);
       else setRoomId(result.roomId);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("join.err.generic"));
+      const problem = problemOf(reason, "join.err.generic");
+      if (roomId && problem.payload?.code === "err.room.notFound") {
+        // The room closed since the link was made. Say so and offer a way forward, not a form that can only fail again.
+        setGoneRoom(roomId);
+        setConnection("gone");
+      } else {
+        setError(problem);
+      }
     } finally {
       setJoining(false);
     }
+  }
+
+  /** From the "not open" screen (or a join by code that found nothing): on to the form, to start a room or to type a different code. */
+  function leaveDeadLink(next: "start" | "join") {
+    const keep = next === "start" && roomId && isCustomCode(roomId) ? roomId : "";
+    setMode(next);
+    setCode(keep);
+    setError(undefined);
+    setRoomId(undefined);
+    setGoneRoom(undefined);
+    setConnection("join");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("room");
+    window.history.replaceState(null, "", url);
+    // The form is not on the page yet: wait for it, then put the cursor where the person has to type.
+    setTimeout(() => document.getElementById("room-name")?.focus(), 0);
   }
 
   const identity = room?.members.find(member => member.id === room.youId);
   const isHost = !!room && room.hostId === room.youId;
   const media = room?.media;
   const currentRoomId = room?.id;
-  const send = useCallback(async (command: RoomCommand) => { await post(`/api/rooms/${currentRoomId}`, command, describe); }, [currentRoomId, describe]);
+  const send = useCallback(async (command: RoomCommand) => { await post(`/api/rooms/${currentRoomId}`, command); }, [currentRoomId]);
+  /** Leave the room. The answer says whether the room closed because this person was the last one in it. */
+  const leave = useCallback(async () => {
+    const response = await post(`/api/rooms/${currentRoomId}`, { type: "leave" } satisfies RoomCommand);
+    return !!(await response.json().catch(() => null) as { closed?: boolean } | null)?.closed;
+  }, [currentRoomId]);
   const playback = room?.playback;
   const pausedBy = room?.pausedBy;
   const wantPlay = room?.wantPlay;
@@ -311,14 +364,24 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
     </>
   ), [profile.lowEnd, startReply]);
   const live = connection === "connected";
+  const goneCode = connection === "gone" && roomId && isCustomCode(roomId) ? roomId : undefined;
+  // After leaving or being removed the join form takes over the screen: put the focus on what it says, not on nothing.
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+  const goneTitleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { if (notice && connection === "join") noticeRef.current?.focus({ preventScroll: true }); }, [notice, connection]);
+  useEffect(() => { if (connection === "gone") goneTitleRef.current?.focus({ preventScroll: true }); }, [connection]);
+  // The tab title follows the room: the video that is playing, then the app's name.
+  const tabTitle = room && media ? `${media.title} · ${t("room.title.default")}` : t("room.title.default");
+  useEffect(() => { document.title = tabTitle; }, [tabTitle]);
 
   return (
     <main className="app" data-in-room={!!room}>
+      {room && <h1 className="sr-only">{media?.title ?? t("room.title.default")}</h1>}
       <header className="topbar">
         <span className="room-mark" aria-hidden="true" />
         <TopbarTitle
           title={media?.title ?? t("room.title.default")}
-          detail={room ? `${isHost ? t("room.detail.hosting") : t("room.detail.shared")}${isCustomCode(room.id) ? ` · ${t("room.detail.code", { code: room.id })}` : ""}` : t("room.tagline")}
+          detail={room ? (isCustomCode(room.id) ? t("room.detail.code", { code: room.id }) : isHost ? t("room.detail.hosting") : t("room.detail.shared")) : t("room.tagline")}
           onOpen={room && media ? () => setDetailsOpen(true) : undefined}
         />
         {room && (
@@ -346,10 +409,10 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
             poster={media.hasPoster ? mediaUrl(room.id, media, `poster?v=${media.version}`) : undefined}
             captions={captions} lite={profile.lowEnd}
             room={playerRoom}
-            overlay={reactionLayer}
+            overlay={reactionLayer} onChat={startReply}
           />
         ) : (
-          <div className="stage-empty">
+          <div className="stage-empty" data-join={!room}>
             <span className="room-mark" aria-hidden="true" />
             <p>
               {!room ? t("stage.joinToWatch")
@@ -361,52 +424,82 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
       </section>
 
       {room ? (
-        <RoomPanel room={room} identityName={identity?.name} isHost={isHost} send={send} onLeft={() => backToJoin("room.left")} quality={quality} onQuality={setQuality} profile={profile} replyRequest={replyRequest} />
+        <RoomPanel room={room} identityName={identity?.name} isHost={isHost} send={send} onLeave={leave} onLeft={closed => backToJoin("room.left", closed)} quality={quality} onQuality={setQuality} profile={profile} replyRequest={replyRequest} />
       ) : (
         <aside className="sheet" aria-labelledby="join-title">
-          <h2 id="join-title">{roomId ? t("join.title.link") : t("join.title.new")}</h2>
-          <p className="sheet-lede">{roomId ? t("join.lede.link") : t("join.lede.new")}</p>
-          {notice && connection === "join" && <p className={notice.bad ? "room-error" : "sheet-note"} role={notice.bad ? "alert" : "status"}>{notice.text}</p>}
+          <h1 id="join-title" ref={goneTitleRef} tabIndex={-1}>{connection === "gone" ? t("join.gone.title") : roomId ? t("join.title.link") : t("join.title.new")}</h1>
+          {connection !== "gone" && <p className="sheet-lede">{roomId ? t("join.lede.link") : t("join.lede.new")}</p>}
+          {/* A guest arriving by a link is told which room it is for (a private room has no code worth showing). */}
+          {roomId && connection !== "gone" && <p className="sheet-lede join-target">{isCustomCode(roomId) ? t("join.linkCode", { code: roomId }) : t("join.linkPrivate")}</p>}
+          {defaultPassword.show && <DefaultPasswordNotice onDismiss={defaultPassword.dismiss} />}
+          {notice && connection === "join" && <p ref={noticeRef} tabIndex={-1} className={notice.bad ? "room-error sheet-status" : "sheet-status"} role={notice.bad ? "alert" : "status"}>{t(notice.key)}</p>}
           {connection === "checking" ? <p role="status" className="sheet-note">{t("join.checking")}</p> : null}
+          {connection === "gone" ? (
+            <>
+              <p className="sheet-lede">{goneCode ? t("join.gone.code", { code: goneCode }) : t("join.gone.link")}</p>
+              <div className="gone-actions">
+                <button className="btn btn-primary" type="button" onClick={() => leaveDeadLink("start")}>{goneCode ? t("join.gone.startCode") : t("join.tab.start")}</button>
+                <button className="btn" type="button" onClick={() => leaveDeadLink("join")}>{goneCode ? t("join.gone.other") : t("join.tab.join")}</button>
+              </div>
+            </>
+          ) : null}
           {connection === "unavailable" ? (
             <>
-              <p className="room-error" role="alert">{error}</p>
+              <p className="room-error" role="alert">{say(error)}</p>
               <button className="btn" type="button" onClick={() => { setConnection("checking"); setAttempt(value => value + 1); }}>{t("join.retry")}</button>
             </>
           ) : null}
           {connection === "join" ? (
             <form className="join-form" onSubmit={join}>
               {!roomId && (
-                <div className="segmented mode-tabs" role="radiogroup" aria-label={t("join.modeLabel")}>
-                  <button type="button" role="radio" aria-checked={mode === "start"} onClick={() => { setMode("start"); setError(""); }}>{t("join.tab.start")}</button>
-                  <button type="button" role="radio" aria-checked={mode === "join"} onClick={() => { setMode("join"); setError(""); }}>{t("join.tab.join")}</button>
+                <div className="segmented mode-tabs" role="radiogroup" aria-label={t("join.modeLabel")} ref={rovingRef}>
+                  <button type="button" role="radio" aria-checked={mode === "start"} onClick={() => { setMode("start"); setError(undefined); }}>{t("join.tab.start")}</button>
+                  <button type="button" role="radio" aria-checked={mode === "join"} onClick={() => { setMode("join"); setError(undefined); }}>{t("join.tab.join")}</button>
                 </div>
               )}
-              <label htmlFor="room-name">{t("join.name")}</label>
-              <input id="room-name" maxLength={32} required autoComplete="nickname" enterKeyHint={roomId ? "go" : "next"} value={name} onChange={event => setName(event.target.value)} />
+              {/* The counter sits on the label's line, so it appears (and its words change) without moving anything below. */}
+              <div className="field-head">
+                <label htmlFor="room-name">{t("join.name")}</label>
+                {name.length >= 24 && (
+                  <small id="room-name-count" className="field-count" data-full={name.length >= 32} role={name.length >= 32 ? "status" : undefined}>
+                    {name.length >= 32 ? t("join.nameFull") : t("join.nameCount", { count: name.length })}
+                  </small>
+                )}
+              </div>
+              <input
+                id="room-name" maxLength={32} required autoComplete="nickname" enterKeyHint={roomId ? "go" : "next"} value={name}
+                aria-describedby={name.length >= 24 ? "room-name-count" : undefined} onChange={event => setName(event.target.value)}
+              />
               {!roomId && (
                 <>
                   <label htmlFor="room-code">{mode === "start" ? t("join.code.optional") : t("join.code")}</label>
                   <input
-                    id="room-code" maxLength={mode === "join" ? 200 : 40} enterKeyHint="go" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                    id="room-code" maxLength={mode === "join" ? 200 : 24} enterKeyHint="go" autoCapitalize="none" autoCorrect="off" spellCheck={false}
                     autoComplete="off" required={mode === "join"} value={code}
                     placeholder={mode === "start" ? t("join.code.placeholderStart") : t("join.code.placeholderJoin")}
-                    onChange={event => { setCode(event.target.value); setError(""); }}
-                    aria-describedby="room-code-hint"
+                    onChange={event => { setCode(event.target.value); setError(undefined); }}
+                    aria-describedby={error?.key === "err.code.invalid" ? undefined : "room-code-hint"}
                   />
-                  <p id="room-code-hint" className="code-hint">
-                    {mode === "join"
-                      ? t("join.hint.join")
-                      : code.trim()
-                        ? (isCustomCode(cleanCodeInput(code)) ? <>{t("join.hint.customBefore")}<strong>{cleanCodeInput(code)}</strong>{t("join.hint.customAfter")}</> : t("join.hint.rules"))
-                        : t("join.hint.blank")}
-                  </p>
+                  {/* When the code was refused the error below says the rules, so the hint steps aside instead of saying it twice. */}
+                  {error?.key !== "err.code.invalid" && (
+                    <p id="room-code-hint" className="code-hint">
+                      {mode === "join"
+                        ? t("join.hint.join")
+                        : code.trim()
+                          ? (isCustomCode(cleanCodeInput(code)) ? <>{t("join.hint.customBefore")}<strong>{cleanCodeInput(code)}</strong>{t("join.hint.customAfter")}</> : t("join.hint.rules"))
+                          : t("join.hint.blank")}
+                    </p>
+                  )}
                 </>
               )}
               <button className="btn btn-primary" type="submit" disabled={joining || !name.trim() || (mode === "join" && !roomId && !code.trim())}>
                 {joining ? t("join.busy") : roomId || mode === "join" ? t("join.submit.join") : t("join.submit.start")}
               </button>
-              {error && <p className="room-error" role="alert">{error}</p>}
+              {error && <p className="room-error" role="alert">{say(error)}</p>}
+              {/* Joining by code found no room: if the code could be a room code, say so and offer to start it. */}
+              {error?.payload?.code === "err.room.notFound" && !roomId && isCustomCode(cleanCodeInput(code)) && (
+                <button className="btn" type="button" onClick={() => { setMode("start"); setError(undefined); }}>{t("join.gone.startCode")}</button>
+              )}
             </form>
           ) : null}
           <LanguageSwitch />
@@ -414,7 +507,7 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
         </aside>
       )}
       <input ref={focusProxy} className="focus-proxy" aria-hidden="true" tabIndex={-1} readOnly inputMode="text" />
-      {quickReply && room && <QuickReply name={quickReply} send={send} onClose={() => setQuickReply(undefined)} />}
+      {quickReply !== undefined && room && <QuickReply name={quickReply} send={send} onClose={closeQuickReply} />}
     </main>
   );
 }

@@ -1,9 +1,10 @@
 "use client";
 
+import { rovingRef } from "../roving";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { describeError, isLang, langCookie, languages, localeOf, translate, translatePlural, type ApiError, type Lang, type MessageKey, type Params, type PluralKey } from "./core";
+import { describeError, describeProblem, isLang, langCookie, languages, localeOf, translate, translatePlural, type ApiError, type Lang, type MessageKey, type Params, type PluralKey, type Problem } from "./core";
 
-export { languages, translate, type Lang, type MessageKey };
+export { Failure, languages, problemOf, translate, type Lang, type MessageKey, type Problem } from "./core";
 
 type I18n = {
   lang: Lang;
@@ -13,6 +14,8 @@ type I18n = {
   tn: (key: PluralKey, count: number, params?: Params) => string;
   /** The sentence for a failed API request, in this language. */
   fail: (payload: ApiError | null | undefined, fallback: MessageKey) => string;
+  /** The sentence for an error that was kept as data (see Problem), in this language. */
+  say: (problem: Problem | undefined | null) => string;
   setLang: (lang: Lang) => void;
 };
 
@@ -46,6 +49,7 @@ export function LanguageProvider({ initial, children }: { initial?: Lang; childr
       t: (key, params) => translate(lang, key, params),
       tn: (key, count, params) => translatePlural(lang, key, count, params),
       fail: (payload, fallback) => describeError(lang, payload, fallback),
+      say: problem => (problem ? describeProblem(lang, problem) : ""),
     };
   }, [lang, setLang]);
 
@@ -85,7 +89,7 @@ function LanguageChooser({ onChoose }: { onChoose: (lang: Lang) => void }) {
 export function LanguageSwitch() {
   const { lang, setLang, t } = useI18n();
   return (
-    <div className="lang-switch" role="radiogroup" aria-label={t("language.label")}>
+    <div className="lang-switch" role="radiogroup" aria-label={t("language.label")} ref={rovingRef}>
       {languages.map(option => (
         <button key={option.code} type="button" role="radio" lang={option.code} aria-checked={lang === option.code} onClick={() => setLang(option.code)}>
           {option.name}

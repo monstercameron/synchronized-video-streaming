@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { applyCommand, requireMembership, roomSnapshot, serverTime } from "../../../room-store";
+import { applyCommand, requireMembership, roomExists, roomSnapshot, serverTime } from "../../../room-store";
 import { getSession, noStore, readBody, readCommand, roomResponse } from "../../../room-http";
 
 export const runtime = "nodejs";
@@ -22,6 +22,8 @@ export async function POST(request: NextRequest, { params }: Context) {
     const { roomId } = await params;
     const member = requireMembership(roomId, getSession(request));
     applyCommand(member, command);
+    // Leaving says whether the room is gone (this person was the last one), so the screen they land on can be honest about it.
+    if (command.type === "leave") return Response.json({ closed: !roomExists(roomId) }, { headers: noStore });
     return new Response(null, { status: 204, headers: noStore });
   } catch (error) {
     return roomResponse(error);

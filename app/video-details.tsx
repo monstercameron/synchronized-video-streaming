@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { captionLabel } from "./i18n/caption-label";
+import { formatNumber } from "./i18n/format";
 import { useI18n, LanguageSwitch } from "./i18n";
 import { audioCodecLabel, containerLabel, formatBitrate, formatDuration, formatSize, resolutionLabel, videoCodecLabel } from "./media-format";
 import type { MediaInfo } from "./room-shared";
@@ -33,18 +34,26 @@ export function VideoDetails({ media, posterUrl, room, roomId, onClose }: {
     return () => { if (element?.open) element.close(); };
   }, []);
 
+  // Close through the dialog itself: the browser then puts focus back on what opened it. (Unmounting an open dialog would drop focus on the page.)
+  const dismiss = () => { if (dialog.current?.open) dialog.current.close(); onClose(); };
+
   const heightLabel = resolutionLabel(media.height);
   const dimensions = media.width && media.height ? `${media.width} × ${media.height}${heightLabel ? ` (${heightLabel})` : ""}` : t("common.unknown");
   const note = media.notes.map(entry => t(entry.key, entry.params)).join(" ");
 
   return (
     <dialog
-      ref={dialog} className="details" aria-labelledby="details-title" onClose={onClose}
+      // A "close" that arrives while the sheet is open again is the echo of the effect below being run twice in development: ignore it.
+      ref={dialog} className="details" aria-labelledby="details-title" onClose={event => { if (!event.currentTarget.open) onClose(); }}
       // A tap on the dimmed area outside the sheet lands on the dialog itself.
-      onClick={event => { if (event.target === event.currentTarget) onClose(); }}
+      onClick={event => { if (event.target === event.currentTarget) dismiss(); }}
     >
       <div className="details-sheet">
-        <div className="details-handle" aria-hidden="true" />
+        {/* Stays at the top while the sheet scrolls, so closing is always one tap away (Escape and a tap outside also close). */}
+        <div className="details-bar">
+          <div className="details-handle" aria-hidden="true" />
+          <button className="settings-close details-x" type="button" onClick={dismiss} aria-label={t("common.close")} title={t("common.close")}>✕</button>
+        </div>
         {posterUrl && <img className="details-poster" src={posterUrl} alt="" loading="lazy" />}
         <h2 id="details-title">{media.title}</h2>
 
@@ -56,7 +65,7 @@ export function VideoDetails({ media, posterUrl, room, roomId, onClose }: {
         {note && <p className="details-note">{note}</p>}
 
         {details.meta && <section><MetaView meta={details.meta} /></section>}
-        {details.canLookUp !== undefined && (
+        {details.canLookUp && (
           <section>
             {!details.meta && <h3>{t("details.about")}</h3>}
             <FindDetails roomId={roomId} media={media} canLookUp={details.canLookUp} model={details.model} described={!!details.meta} />
@@ -66,7 +75,8 @@ export function VideoDetails({ media, posterUrl, room, roomId, onClose }: {
         <dl className="facts">
           <Fact label={t("details.length")}>{formatDuration(media.duration)}</Fact>
           <Fact label={t("details.picture")}>{dimensions}</Fact>
-          <Fact label={t("details.bitrate")}>{formatBitrate(media.bitrate, locale, t("common.unknown"))}</Fact>
+          {/* A file whose bitrate is not known would read "0.0 Mb/s": leave the line out instead. */}
+          {media.bitrate >= 50_000 && <Fact label={t("details.bitrate")}>{formatBitrate(media.bitrate, locale, t("common.unknown"))}</Fact>}
           <Fact label={t("details.size")}>{media.size ? formatSize(media.size, locale) : t("common.unknown")}</Fact>
           <Fact label={t("details.format")}>{containerLabel(media, { hls: t("media.hls"), unknown: t("common.unknown") })}</Fact>
           <Fact label={t("details.video")}>{videoCodecLabel(media.vcodec, t("common.unknown"))}</Fact>
@@ -87,7 +97,7 @@ export function VideoDetails({ media, posterUrl, room, roomId, onClose }: {
           <h3>{t("details.room")}</h3>
           <dl className="facts">
             <Fact label={t("details.host")}>{room.hostName}</Fact>
-            <Fact label={t("details.people")}>{room.people}</Fact>
+            <Fact label={t("details.people")}>{formatNumber(locale, room.people)}</Fact>
           </dl>
           {room.code && (
             <div className="room-code details-code">
@@ -104,7 +114,7 @@ export function VideoDetails({ media, posterUrl, room, roomId, onClose }: {
           <LanguageSwitch />
         </section>
 
-        <button className="btn btn-wide details-close" type="button" onClick={onClose}>{t("common.close")}</button>
+        <button className="btn btn-wide details-close" type="button" onClick={dismiss}>{t("common.close")}</button>
       </div>
     </dialog>
   );

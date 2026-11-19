@@ -34,9 +34,33 @@ export function translatePlural(lang: Lang, base: PluralKey, count: number, para
 export type ApiError = { error?: string; code?: MessageKey; params?: Params };
 
 /** The sentence to show for a failed request, in the viewer's language. */
-export function describeError(lang: Lang, payload: ApiError | null | undefined, fallback: MessageKey) {
+export function describeError(lang: Lang, payload: ApiError | null | undefined, fallback: MessageKey, params?: Params) {
   if (payload?.code && payload.code in en) return translate(lang, payload.code, payload.params);
-  return payload?.error ?? translate(lang, fallback);
+  return payload?.error ?? translate(lang, fallback, params);
+}
+
+/**
+ * A request that came back with a refusal. It carries the server's error (with its translatable code), so whoever catches it
+ * can keep the *meaning* in state and write the sentence at render time, in whichever language is chosen by then.
+ */
+export class Failure extends Error {
+  constructor(readonly payload: ApiError | null, readonly key?: MessageKey) { super(payload?.error ?? key ?? "Request failed"); }
+}
+
+/**
+ * An error kept as data instead of as a finished sentence: `key` (with `params`) is what to say when the server gave no
+ * translatable code. Showing it with `say(problem)` re-translates it when the language is switched, so a stale English
+ * message never stays behind a Spanish page.
+ */
+export type Problem = { key: MessageKey; params?: Params; payload?: ApiError | null };
+
+/** The problem for something that was thrown: a refusal keeps the server's code, anything else says `key`. */
+export function problemOf(reason: unknown, key: MessageKey): Problem {
+  return reason instanceof Failure ? { key: reason.key ?? key, payload: reason.payload } : { key };
+}
+
+export function describeProblem(lang: Lang, problem: Problem) {
+  return describeError(lang, problem.payload, problem.key, problem.params);
 }
 
 /** The Intl locale for a language, used for dates, numbers and language names. */

@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               send(frame("closed", {}));
               close();
             } else if (event.type === "kick") {
-              if (event.memberId === you.id) { send(frame(event.left ? "left" : "kicked", {})); close(); }
+              if (event.memberId === you.id) { send(frame(event.left ? "left" : "kicked", event.left ? { last: !!event.last } : {})); close(); }
             } else if (event.type === "state") {
               const shared = event.shared ?? sharedState(roomId);
               const wantKey = wantKeyOf(shared);

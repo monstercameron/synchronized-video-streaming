@@ -16,9 +16,29 @@
   --bad: #ffb4a2;
   --tap: 2.75rem;
   --gutter: 0.875rem;
+
+  /* Motion tokens. The "Motion" section at the end of this file explains how they are used. */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);      /* things arriving: quick start, soft landing */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);           /* things leaving */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* presses and pops: a small overshoot */
+  --dur-fast: 120ms;
+  --dur-med: 200ms;
+  --dur-slow: 280ms;
+  --dur-exit: 140ms; /* keep below exitMs in app/motion.ts */
+  --stagger: 30ms;
 }
 
+/* People who asked their device for less motion, and weak phones (usePlaybackQuality sets data-perf="lite" on <html>),
+   get the same screens with every one of these durations collapsed to nothing: state changes still happen, instantly. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0.01ms; --dur-med: 0.01ms; --dur-slow: 0.01ms; --dur-exit: 0.01ms; --stagger: 0ms; }
+}
+:root[data-perf="lite"] { --dur-fast: 0.01ms; --dur-med: 0.01ms; --dur-slow: 0.01ms; --dur-exit: 0.01ms; --stagger: 0ms; }
+
 *, *::before, *::after { box-sizing: border-box; }
+
+/* Text for screen readers only (announcements, a heading the layout does not show). */
+.sr-only { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 html { -webkit-text-size-adjust: 100%; }
 
@@ -51,6 +71,7 @@ button { touch-action: manipulation; }
   padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
 }
 
+
 .topbar {
   display: flex;
   align-items: center;
@@ -81,7 +102,7 @@ button { touch-action: manipulation; }
 
 .topbar-title { display: grid; min-inline-size: 0; margin-inline-end: auto; line-height: 1.2; }
 .topbar-title strong { overflow: hidden; font-size: 0.9375rem; text-overflow: ellipsis; white-space: nowrap; }
-.topbar-title span { color: var(--muted); font-size: 0.75rem; }
+.topbar-title span { overflow: hidden; color: var(--muted); font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
 
 .status-pill {
   display: inline-flex;
@@ -102,13 +123,16 @@ button { touch-action: manipulation; }
 .status-pill[data-state="reconnecting"] i { animation: pulse 1s ease-in-out infinite; }
 
 @keyframes pulse { 50% { opacity: 0.25; } }
-@media (prefers-reduced-motion: reduce) { .status-pill i { animation: none !important; } }
+/* Less motion (the device setting) and the weak-phone mode (data-perf="lite") treat the status dot the same way: still. */
+@media (prefers-reduced-motion: reduce) { .status-pill i, .status-pill i::after { animation: none !important; } }
+:root[data-perf="lite"] .status-pill i, :root[data-perf="lite"] .status-pill i::after { animation: none !important; }
 
 /* ---------- Stage / player ---------- */
 
-.stage { min-inline-size: 0; background: #000; }
+.stage { display: flex; flex-direction: column; min-inline-size: 0; min-block-size: 0; overflow-y: auto; overscroll-behavior: contain; background: #000; }
 
-.player { display: flex; flex-direction: column; min-inline-size: 0; background: var(--panel); }
+.player { display: flex; flex: 0 1 auto; flex-direction: column; min-inline-size: 0; min-block-size: 0; background: var(--panel); }
+.player > .player-picture, .player > .player-deck { flex: none; }
 
 .player-picture {
   position: relative;
@@ -190,14 +214,13 @@ button { touch-action: manipulation; }
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 2px #000a;
-  transition: opacity 0.25s ease;
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
 }
 
-.player[data-controls="off"] .player-timeline { opacity: 0; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .player-timeline { transition: none; } }
+.player[data-controls="off"] .player-timeline { opacity: 0; transform: translateY(0.375rem); pointer-events: none; }
 
 /* Subtitles and notes step up out of the way while the timeline is showing. */
-.subtitle-stack { transition: bottom 0.2s ease; }
+.subtitle-stack { transition: bottom var(--dur-med) var(--ease-out); }
 .player[data-controls="on"] .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 2.5rem); }
 .player[data-controls="on"] .player-waiting { inset-block-end: 3.25rem; }
 
@@ -207,7 +230,7 @@ button { touch-action: manipulation; }
   appearance: none;
   display: block;
   inline-size: 100%;
-  block-size: 2.5rem;
+  block-size: var(--tap);
   margin: 0;
   background: transparent;
   cursor: pointer;
@@ -262,8 +285,20 @@ button { touch-action: manipulation; }
 }
 
 .player-actions::-webkit-scrollbar { display: none; }
+/* A soft fade on whichever edge has more buttons to swipe to (scroll-fade.ts sets the two lengths). */
+.player-actions {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-left, 0px), #000 calc(100% - var(--fade-right, 0px)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-left, 0px), #000 calc(100% - var(--fade-right, 0px)), transparent 100%);
+}
 .player-actions > .player-button { flex: 0 0 auto; min-inline-size: 4.5rem; padding-inline: 0.625rem; scroll-snap-align: start; }
 .player-actions > .player-play { min-inline-size: 5.5rem; }
+/* A small phone (up to about 375px): everything but Play becomes a 44px icon, so Full screen and Settings are on screen without
+   scrolling. The names are still there for screen readers and as tooltips. Wider phones keep the labels. */
+@media (max-width: 23.5rem) {
+  .player-actions { gap: 0.25rem; }
+  .player-actions > .player-button:not(.player-play) { min-inline-size: var(--tap); padding-inline: 0; }
+  .player-actions > .player-button:not(.player-play) span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
 
 .player-button {
   display: flex;
@@ -278,7 +313,7 @@ button { touch-action: manipulation; }
   border-radius: 0.625rem;
   background: var(--control);
   color: var(--text);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 650;
   line-height: 1.1;
   text-align: center;
@@ -286,9 +321,8 @@ button { touch-action: manipulation; }
 }
 
 .player-button svg { flex: 0 0 auto; inline-size: 1.375rem; block-size: 1.375rem; }
-.player-button[aria-pressed="true"] { border-color: #917447; background: #362c20; color: var(--gold); }
+.player-button[aria-pressed="true"], .player-button[aria-expanded="true"] { border-color: #917447; background: #362c20; color: var(--gold); }
 .player-play { background: var(--gold); color: var(--gold-ink); }
-@media (min-width: 40rem) { .player-play { flex-direction: row; gap: 0.375rem; font-size: 0.9375rem; } }
 .player-button:disabled, .player-timeline input:disabled { opacity: 0.5; cursor: default; }
 
 .player-error, .player-notice { margin: 0.625rem 0 0; color: var(--muted); font-size: 0.8125rem; }
@@ -318,11 +352,11 @@ button { touch-action: manipulation; }
   pointer-events: none; /* The empty part of the strip passes touches through to the picture. */
 }
 
-.player:fullscreen > .player-deck::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(to top, #000000d9, #0000); transition: opacity 0.25s ease; }
+.player:fullscreen > .player-deck::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(to top, #000000d9, #0000); transition: opacity var(--dur-slow) var(--ease-out); }
 .player:fullscreen > .player-deck > * { pointer-events: auto; }
-.player:fullscreen > .player-deck .player-actions { margin-inline: 0; padding-inline: 0; transition: opacity 0.25s ease; }
+.player:fullscreen > .player-deck .player-actions { margin-inline: 0; padding-inline: 0; transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out); }
 .player[data-controls="off"]:fullscreen > .player-deck::before { opacity: 0; }
-.player[data-controls="off"]:fullscreen > .player-deck .player-actions { opacity: 0; pointer-events: none; }
+.player[data-controls="off"]:fullscreen > .player-deck .player-actions { opacity: 0; transform: translateY(0.5rem); pointer-events: none; }
 .player:fullscreen .player-timeline { inset-block-end: 4.25rem; }
 .player[data-controls="on"]:fullscreen .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 6.5rem); }
 .player[data-controls="on"]:fullscreen .player-waiting { inset-block-end: 7rem; }
@@ -358,9 +392,21 @@ button { touch-action: manipulation; }
   background: var(--page);
 }
 
-.sheet h2 { margin: 0; font: 400 1.75rem/1.1 Georgia, serif; letter-spacing: -0.03em; }
+.sheet h1 { margin: 0; font: 400 1.75rem/1.1 Georgia, serif; letter-spacing: -0.03em; }
 .sheet-lede { margin: 0.5rem 0 0; color: var(--muted); }
+.sheet-lede.join-target { margin-block-start: 0.25rem; color: var(--gold); font-weight: 650; overflow-wrap: anywhere; }
+/* What happened (you left, you were removed): easy to read, not a footnote. */
+/* A notice, not a field: a coloured bar on the start edge and a tinted background, with no outline like an input has. */
+.sheet-status { margin: 1rem 0 0; padding: 0.625rem 0.75rem; border: 0; border-inline-start: 4px solid var(--gold); border-radius: 0.25rem 0.625rem 0.625rem 0.25rem; background: #2a2316; color: var(--text); font-size: 0.9375rem; }
+.sheet-status.room-error { border-inline-start-color: var(--bad); background: #33201c; }
+.field-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: 0.75rem; }
+.field-count { margin-inline-start: auto; color: var(--muted); font-size: 0.75rem; text-align: end; }
+.field-count[data-full="true"] { color: var(--gold); font-weight: 650; }
 .sheet-note { margin: 1rem 0 0; color: var(--muted); font-size: 0.8125rem; }
+/* Focus is moved onto these when the screen changes under the person; they are not controls, so no ring. */
+.sheet h1:focus, .sheet-status:focus { outline: none; }
+/* A link to a room that is not open: the two ways forward, stacked so each is a full-width target. */
+.gone-actions { display: grid; gap: 0.625rem; margin-block-start: 1.25rem; }
 
 .join-form { display: grid; gap: 0.625rem; margin-block-start: 1.25rem; }
 .join-form label { color: var(--muted); font-size: 0.875rem; }
@@ -483,6 +529,25 @@ input::placeholder { color: var(--muted); }
 @media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) {
   .app { grid-template-rows: minmax(0, 1fr); }
   .topbar, .panel, .sheet { display: none; }
+  /* Not in a room yet (opening a link, or just removed or left): the join form is the whole screen, and scrolls if it has to. Without
+     this a phone held sideways saw only "Join to watch" and no way to do it. */
+  .app[data-in-room="false"] .sheet { display: block; }
+  .app[data-in-room="false"] .stage { display: none; }
+  /* The sheet is short and wide here: the words (title, explanation, language) on the left, the form on the right, so the
+     button is on screen without scrolling. The form spans every row, and the last row takes whatever height is left over. */
+  .app[data-in-room="false"] .sheet {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-rows: repeat(8, auto) 1fr;
+    column-gap: 1.75rem;
+    align-content: start;
+    inline-size: min(100%, 56rem);
+    padding-block: 0.75rem;
+  }
+  .app[data-in-room="false"] .sheet > * { grid-column: 1; }
+  .app[data-in-room="false"] .sheet > :is(.join-form, .gone-actions) { grid-column: 2; grid-row: 1 / -1; align-self: start; margin-block-start: 0.25rem; }
+  .app[data-in-room="false"] .sheet-lede { margin-block-start: 0.25rem; }
+  .app[data-in-room="false"] .sheet-status { margin-block-start: 0.5rem; }
   .stage, .player { block-size: 100%; }
   .player { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
   .player-picture { block-size: 100%; aspect-ratio: auto; }
@@ -502,11 +567,11 @@ input::placeholder { color: var(--muted); }
     background: none;
     pointer-events: none;
   }
-  .player > .player-deck::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(to top, #000000d9, #0000); transition: opacity 0.25s ease; }
+  .player > .player-deck::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(to top, #000000d9, #0000); transition: opacity var(--dur-slow) var(--ease-out); }
   .player > .player-deck > * { pointer-events: auto; }
-  .player > .player-deck .player-actions { transition: opacity 0.25s ease; }
+  .player > .player-deck .player-actions { transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out); }
   .player[data-controls="off"] > .player-deck::before { opacity: 0; }
-  .player[data-controls="off"] > .player-deck .player-actions { opacity: 0; pointer-events: none; }
+  .player[data-controls="off"] > .player-deck .player-actions { opacity: 0; transform: translateY(0.5rem); pointer-events: none; }
   .player-timeline { inset-block-end: 3.75rem; }
   .player[data-controls="on"] .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 6rem); }
   .player[data-controls="on"] .player-waiting { inset-block-end: 6.5rem; }
@@ -514,6 +579,8 @@ input::placeholder { color: var(--muted); }
   .player-actions > .player-button { min-inline-size: 3.25rem; padding-inline: 0.375rem; }
   .player-actions > .player-play { min-inline-size: auto; padding-inline: 0.75rem; }
   .player-play { inline-size: auto; padding-inline: 0.75rem; }
+  .player-button { flex-direction: row; gap: 0.375rem; }
+  .player-play { font-size: 0.9375rem; }
   .player-button { min-block-size: var(--tap); }
   .player-button:not(.player-play) span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .player-error, .player-notice { grid-column: 1 / -1; }
@@ -523,11 +590,22 @@ input::placeholder { color: var(--muted); }
 
 @media (min-width: 40rem) {
   :root { --gutter: 1.25rem; }
-  .player-button { flex-direction: row; gap: 0.375rem; font-size: 0.875rem; }
   /* Wide enough for everything: the row stops scrolling and the buttons share the width. */
   .player-actions { margin-inline: 0; padding-inline: 0; }
   .player-actions > .player-button { flex: 1 1 auto; }
   .sheet { inline-size: min(100%, 30rem); margin-inline: auto; padding-block-start: 2rem; }
+}
+/* A tablet or a desktop window: the buttons keep their icon-above-label shape, which is the narrowest, and if the row is
+   still too narrow (long Spanish labels, a window beside the chat) it wraps onto a second line. A label is never cut off. */
+@media (min-width: 40rem) and (min-height: 31.01rem) {
+  .player-actions { flex-wrap: wrap; overflow: visible; -webkit-mask-image: none; mask-image: none; }
+  .player-actions > .player-button { min-inline-size: max-content; }
+  .player-actions .player-button span { overflow: visible; text-overflow: clip; }
+}
+/* Plenty of width (a big desktop window): icon beside label. */
+@media (min-width: 90rem) {
+  .player-button { flex-direction: row; gap: 0.375rem; font-size: 0.875rem; }
+  .player-play { font-size: 0.9375rem; }
 }
 
 /* ---------- Desktop: video beside the room ---------- */
@@ -540,7 +618,7 @@ input::placeholder { color: var(--muted); }
   .topbar { grid-column: 1 / -1; }
   .stage {
     display: grid;
-    align-content: start;
+    align-content: safe center;
     padding: 1.25rem;
     overflow-y: auto;
     background: var(--page);
@@ -599,12 +677,12 @@ mark.mention[data-you="true"] { background: var(--gold); color: var(--gold-ink);
   color: var(--text);
   text-align: start;
   cursor: pointer;
-  animation: toast-in 0.22s ease-out;
+  animation: toast-in var(--dur-med) var(--ease-out);
 }
 
 .mention-toast strong { color: var(--gold); font-size: 0.8125rem; }
 .mention-toast span { overflow: hidden; font-size: 0.875rem; text-overflow: ellipsis; white-space: nowrap; }
-@keyframes toast-in { from { opacity: 0; transform: translateY(-0.5rem); } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-0.5rem) scale(0.97); } }
 
 .jump-latest {
   position: absolute;
@@ -623,15 +701,34 @@ mark.mention[data-you="true"] { background: var(--gold); color: var(--gold-ink);
   cursor: pointer;
 }
 
+/* Eight reactions in a row, each a full 44px target. When the panel is too narrow for all eight (a small phone, or the 22rem
+   column beside the video) it is still one row, which scrolls sideways with a fade on the edge that has more, so the next
+   emoji peeks in from the edge. (Two rows of four would cost another 50px of chat.) */
+.panel { container-type: inline-size; container-name: panel; }
 .reaction-bar {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.125rem;
-  padding: 0.125rem var(--gutter);
-  overflow-x: auto;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.125rem 0;
   border-block-start: 1px solid var(--edge);
   background: var(--panel);
-  scrollbar-width: none;
+}
+.panel .reaction-bar button { min-inline-size: 0; }
+@container panel (max-width: 23.74rem) {
+  .reaction-bar {
+    display: flex;
+    gap: 0.125rem;
+    padding-inline: var(--gutter);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--gutter);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-left, 0px), #000 calc(100% - var(--fade-right, 0px)), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-left, 0px), #000 calc(100% - var(--fade-right, 0px)), transparent 100%);
+  }
+  .reaction-bar::-webkit-scrollbar { display: none; }
+  .panel .reaction-bar button { flex: 0 0 var(--tap); min-inline-size: var(--tap); scroll-snap-align: start; }
 }
 
 .reaction-bar button, .emoji-picker button, .emoji-toggle {
@@ -646,16 +743,17 @@ mark.mention[data-you="true"] { background: var(--gold); color: var(--gold-ink);
   font-size: 1.5rem;
   line-height: 1;
   cursor: pointer;
-  transition: transform 0.12s;
+  transition: transform var(--dur-med) var(--ease-spring), background-color var(--dur-fast) ease-out;
 }
 
-.reaction-bar button:active, .emoji-picker button:active { transform: scale(1.35); }
+/* Pressed: the emoji jumps up at once, then settles back with a small bounce when let go. */
+.reaction-bar button:active, .emoji-picker button:active { transform: scale(1.3); transition-duration: var(--dur-fast); }
 .emoji-toggle { flex: 0 0 auto; background: var(--control); font-size: 1.25rem; }
-.emoji-toggle[aria-pressed="true"] { background: #362c20; }
+.emoji-toggle[aria-expanded="true"] { background: #362c20; }
 
 .emoji-picker {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--tap), 1fr));
   max-block-size: 10.5rem;
   padding: 0.25rem var(--gutter);
   overflow-y: auto;
@@ -663,32 +761,29 @@ mark.mention[data-you="true"] { background: var(--gold); color: var(--gold-ink);
   background: var(--panel);
 }
 
-.emoji-picker button { min-inline-size: 0; font-size: 1.375rem; }
+.emoji-picker button { min-inline-size: var(--tap); font-size: 1.375rem; }
 
 .mention-list { margin: 0; padding: 0.25rem; list-style: none; border-block-start: 1px solid var(--edge); background: var(--panel); }
 
-.mention-list button {
+.mention-list li {
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  inline-size: 100%;
   min-block-size: var(--tap);
   padding: 0.25rem 0.625rem;
-  border: 0;
   border-radius: 0.625rem;
-  background: none;
   color: var(--text);
-  text-align: start;
   cursor: pointer;
 }
 
-.mention-list button[data-active="true"] { background: var(--control); }
+.mention-list li[data-active="true"] { background: var(--control); }
 .mention-list small { margin-inline-start: auto; color: var(--muted); }
 .mention-list .avatar { inline-size: 1.75rem; block-size: 1.75rem; font-size: 0.8125rem; }
 
 .composer { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
 
 .mention-person {
+  flex: 0 0 auto; /* A long name wraps; the button never shrinks below its 44px. */
   inline-size: var(--tap);
   block-size: var(--tap);
   border: 0;
@@ -772,7 +867,8 @@ mark.mention[data-you="true"] { background: var(--gold); color: var(--gold-ink);
 
 .upload { display: grid; gap: 0.25rem; padding: 0.5rem 0.75rem; border-radius: 0.625rem; background: var(--control); font-size: 0.8125rem; }
 .upload span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.upload progress { inline-size: 100%; block-size: 0.375rem; accent-color: var(--gold); }
+.upload-bar { block-size: 0.375rem; border-radius: 999px; background: var(--edge); overflow: hidden; }
+.upload-bar i { display: block; block-size: 100%; background: var(--gold); transform-origin: 0 50%; transition: transform var(--dur-med) var(--ease-out); }
 .upload em { color: var(--bad); font-style: normal; }
 
 .video-list { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
@@ -827,7 +923,7 @@ button.video-item:disabled { opacity: 0.6; cursor: default; }
 .quality { margin: 0; padding: 0.625rem 0.75rem; border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--panel); }
 .quality legend { padding-inline: 0.25rem; color: var(--muted); font-size: 0.75rem; font-weight: 650; }
 .quality p { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.75rem; }
-.quality-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; padding: 0.1875rem; border-radius: 0.625rem; background: var(--page); }
+.quality-choice { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.25rem; padding: 0.1875rem; border-radius: 0.625rem; background: var(--page); }
 .quality-choice button { min-block-size: var(--tap); border: 0; border-radius: 0.5rem; background: none; color: var(--muted); font-weight: 650; cursor: pointer; }
 .quality-choice button[aria-checked="true"] { background: var(--gold); color: var(--gold-ink); }
 
@@ -837,7 +933,7 @@ button.video-item:disabled { opacity: 0.6; cursor: default; }
 [data-perf="lite"] .floater b { text-shadow: none; }
 [data-perf="lite"] :is(.mention-toast, .jump-latest, .player-tap span, .player) { box-shadow: none; }
 [data-perf="lite"] :is(.reaction-bar button, .emoji-picker button) { transition: none; }
-[data-perf="lite"] :is(.chat-message[data-mention="true"], .mention-toast, .status-pill i) { animation: none; }
+[data-perf="lite"] :is(.chat-message[data-mention="true"], .mention-toast) { animation: none; }
 [data-perf="lite"] .stage-empty { background: #0b0e14; }
 [data-perf="lite"] .player-tap { background: #0008; }
 
@@ -885,19 +981,28 @@ button.video-item:disabled { opacity: 0.6; cursor: default; }
 .player-settings {
   display: flex;
   flex-direction: column;
-  min-block-size: 0;
+  flex: 1 1 auto;
+  min-block-size: min(7.5rem, 100%);
   max-block-size: min(52dvh, 30rem);
   border-block-start: 1px solid var(--edge);
   background: var(--panel);
 }
 
-.settings-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.375rem var(--gutter); border-block-end: 1px solid var(--edge); }
+/* On a phone or tablet held upright the panel is a sheet laid over the chat (see "Sheets over the chat" at the end of the
+   stylesheet): the picture, the buttons and the tabs never move when it opens, closes or changes tab. */
 
-.settings-tabs { display: grid; flex: 1; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.25rem; padding: 0.1875rem; border-radius: 0.625rem; background: var(--page); }
-.settings-tabs button { min-block-size: var(--tap); border: 0; border-radius: 0.5rem; background: none; color: var(--muted); font-weight: 650; cursor: pointer; }
+.settings-bar { display: flex; flex: none; align-items: center; gap: 0.5rem; padding: 0.375rem var(--gutter); border-block-end: 1px solid var(--edge); }
+.settings-bar .panel-title { flex: 1; }
+.settings-close { flex: none; inline-size: var(--tap); block-size: var(--tap); padding: 0; border: 0; border-radius: 0.625rem; background: none; color: var(--muted); font-size: 1.125rem; cursor: pointer; }
+.settings-close:hover { color: var(--text); }
+
+.settings-tabs { display: grid; flex: 1; min-inline-size: 0; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0.25rem; padding: 0.1875rem; border-radius: 0.625rem; background: var(--page); }
+.settings-tabs button { min-block-size: var(--tap); min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; padding-inline: 0.25rem; border: 0; border-radius: 0.5rem; background: none; color: var(--muted); font-weight: 650; cursor: pointer; }
 .settings-tabs [aria-selected="true"] { background: var(--gold); color: var(--gold-ink); }
+/* Three words share a narrow phone's width: slightly smaller type so "Language" is not cut off. */
+@media (max-width: 22.5rem) { .settings-tabs button { font-size: 0.8125rem; } }
 
-.settings-body { overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem var(--gutter) 1rem; }
+.settings-body { flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem var(--gutter) 1rem; }
 
 .set-group { display: grid; gap: 0.625rem; padding-block: 0.75rem; border-block-end: 1px solid var(--edge); }
 .set-group:last-of-type { border-block-end: 0; }
@@ -918,7 +1023,11 @@ button.video-item:disabled { opacity: 0.6; cursor: default; }
 .segmented button { flex: 1 1 auto; min-block-size: var(--tap); padding: 0 0.75rem; border: 0; border-radius: 0.5rem; background: none; color: var(--muted); font: inherit; font-weight: 650; cursor: pointer; }
 .segmented [aria-checked="true"] { background: var(--gold); color: var(--gold-ink); }
 
-.nudges { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.25rem; }
+/* The middle button (Reset) takes the width of its word; the four steps share the rest and never drop under a thumb's width.
+   minmax(0, …) matters: a plain 1fr cannot shrink below its text, which pushed the row off a 320px screen in Spanish. */
+.nudges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto repeat(2, minmax(0, 1fr)); gap: 0.25rem; }
+.nudges button { min-inline-size: 0; padding-inline: 0.25rem; }
+.nudges button:nth-child(3) { padding-inline: 0.5rem; font-size: 0.875rem; }
 .nudges button, .chips button { min-block-size: var(--tap); border: 1px solid var(--edge); border-radius: 0.5rem; background: var(--control); color: var(--text); font: inherit; font-weight: 650; cursor: pointer; }
 .nudges button:disabled { opacity: 0.5; cursor: default; }
 .chips { display: flex; flex-wrap: wrap; gap: 0.375rem; }
@@ -927,7 +1036,7 @@ button.video-item:disabled { opacity: 0.6; cursor: default; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-block-size: var(--tap); padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: start; cursor: pointer; }
 .switch-row small { display: block; color: var(--muted); font-size: 0.75rem; }
 .switch-row i { position: relative; flex: 0 0 auto; inline-size: 2.75rem; block-size: 1.5rem; border: 1px solid var(--edge); border-radius: 999px; background: var(--control); }
-.switch-row i::after { content: ""; position: absolute; inset-block-start: 0.125rem; inset-inline-start: 0.125rem; inline-size: 1.125rem; block-size: 1.125rem; border-radius: 50%; background: var(--muted); transition: transform 0.15s; }
+.switch-row i::after { content: ""; position: absolute; inset-block-start: 0.125rem; inset-inline-start: 0.125rem; inline-size: 1.125rem; block-size: 1.125rem; border-radius: 50%; background: var(--muted); transition: transform var(--dur-med) var(--ease-spring), background-color var(--dur-fast) ease-out; }
 .switch-row[aria-checked="true"] i { border-color: var(--gold); background: var(--gold); }
 .switch-row[aria-checked="true"] i::after { background: var(--gold-ink); transform: translateX(1.25rem); }
 
@@ -937,6 +1046,8 @@ button.video-item:disabled { opacity: 0.6; cursor: default; }
 .quality-rows { display: grid; gap: 0.25rem; }
 .quality-rows button { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-block-size: var(--tap); padding: 0.375rem 0.75rem; border: 1px solid var(--edge); border-radius: 0.625rem; background: var(--control); color: var(--text); font: inherit; text-align: start; cursor: pointer; }
 .quality-rows button[aria-checked="true"] { border-color: var(--gold); background: #2a2419; }
+.quality-rows button span:first-child { flex: none; white-space: nowrap; }
+.quality-rows button span:last-child { min-inline-size: 0; }
 .quality-rows small { margin-inline-start: 0.5rem; color: var(--gold); font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; }
 .quality-rows button span:last-child { color: var(--muted); font-size: 0.8125rem; text-align: end; }
 
@@ -954,6 +1065,9 @@ button.video-item:disabled { opacity: 0.6; cursor: default; }
   .player:has(.player-settings) > .player-picture { grid-column: 1; }
   .player:has(.player-settings) > .player-deck { inset-inline-end: max(15rem, 44%); }
   .player:has(.player-settings) > .player-settings { grid-column: 2; grid-row: 1 / span 2; max-block-size: none; border-block-start: 0; border-inline-start: 1px solid var(--edge); }
+  /* The row is narrower beside the drawer: Play goes icon-only too, so every button (Play first) stays in view without scrolling. */
+  .player:has(.player-settings) .player-play span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .player:has(.player-settings) .player-actions > .player-play { min-inline-size: 3.25rem; }
 }
 
 /* ---------- Room codes ---------- */
@@ -962,7 +1076,9 @@ button.video-item:disabled { opacity: 0.6; cursor: default; }
 .code-hint { margin: 0; color: var(--muted); font-size: 0.8125rem; }
 .code-hint strong { color: var(--gold); overflow-wrap: anywhere; }
 
-.room-code { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.75rem; border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--panel); }
+/* On a narrow phone the Copy button drops under the code instead of squeezing it: a code broken over two lines is hard to read out. */
+.room-code > .btn { flex: none; margin-inline-start: auto; white-space: nowrap; }
+.room-code { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; padding: 0.75rem; border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--panel); }
 .room-code small { display: block; color: var(--muted); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
 .room-code strong { display: block; color: var(--gold); font-size: 1.25rem; letter-spacing: 0.02em; overflow-wrap: anywhere; }
 
@@ -1002,27 +1118,15 @@ button.video-item:disabled { opacity: 0.6; cursor: default; }
 .stage, .player, .player-deck, .panel { min-inline-size: 0; }
 .pane, .chat-wrap, .sheet { min-inline-size: 0; }
 
-/* ---------- Title bar: a long title scrolls sideways; tapping it opens the details ---------- */
+/* ---------- Title bar: a long title is cut with an ellipsis; tapping it opens the details ---------- */
 
-.topbar-title { min-inline-size: 0; flex: 1 1 auto; margin-inline-end: 0.5rem; }
+.topbar-title { min-inline-size: 0; flex: 1 1 auto; align-content: center; min-block-size: var(--tap); margin-inline-end: 0.5rem; }
 .topbar-title[data-interactive="true"] { cursor: pointer; border-radius: 0.5rem; }
 .topbar-title[data-interactive="true"]:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .title-row { display: flex; align-items: center; gap: 0.5rem; min-inline-size: 0; }
 
-.topbar-title strong.title-scroll {
-  display: block;
-  min-inline-size: 0;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  text-overflow: clip;
-  white-space: nowrap;
-  /* A soft fade on whichever side still has more to read. */
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-left, 0px), #000 calc(100% - var(--fade-right, 0px)), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-left, 0px), #000 calc(100% - var(--fade-right, 0px)), transparent 100%);
-}
-
-.topbar-title strong.title-scroll::-webkit-scrollbar { display: none; }
+/* One line: a long title ends in an ellipsis, and the "i" after it (which says the title opens the details) is never pushed out. */
+.topbar-title strong.title-text { display: block; flex: 0 1 auto; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .title-info {
   flex: 0 0 auto;
@@ -1049,10 +1153,10 @@ dialog.details {
   background: var(--panel);
   color: var(--text);
   overflow: hidden;
-  animation: sheet-up 0.22s ease-out;
+  animation: sheet-up var(--dur-med) var(--ease-out);
 }
 
-dialog.details::backdrop { background: #000a; }
+dialog.details::backdrop { background: #000a; animation: m-fade var(--dur-med) ease-out; }
 @keyframes sheet-up { from { transform: translateY(2rem); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { dialog.details { animation: none; } }
 @media (min-width: 40rem) { dialog.details { margin-block: auto; border-radius: 1.25rem; } }
@@ -1061,11 +1165,13 @@ dialog.details::backdrop { background: #000a; }
   display: grid;
   gap: 0.875rem;
   max-block-size: 90dvh;
-  padding: 0.5rem var(--gutter) max(1rem, env(safe-area-inset-bottom, 0px));
+  padding: 0 var(--gutter) max(1rem, env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
+.details-bar { position: sticky; inset-block-start: 0; z-index: 2; display: grid; place-items: center; min-block-size: var(--tap); margin-inline: calc(-1 * var(--gutter)); padding-inline: var(--gutter); background: var(--panel); }
+.details-x { position: absolute; inset-inline-end: 0.25rem; inset-block-start: 0; }
 .details-handle { justify-self: center; inline-size: 2.5rem; block-size: 0.25rem; border-radius: 999px; background: var(--edge); }
 .details-poster { inline-size: 100%; aspect-ratio: 16 / 9; border-radius: 0.75rem; background: #000; object-fit: cover; }
 .details-sheet h2 { margin: 0; font: 400 1.5rem/1.2 Georgia, serif; letter-spacing: -0.02em; overflow-wrap: anywhere; user-select: text; }
@@ -1100,7 +1206,9 @@ dialog.details::backdrop { background: #000a; }
 }
 
 .tabs::-webkit-scrollbar { display: none; }
-.tabs button { flex: 1 0 auto; min-inline-size: 6.5rem; padding-inline: 1.25rem; white-space: nowrap; scroll-snap-align: center; }
+/* The three tabs share the width and are always fully visible, in either language and with a badge of two digits (the desktop panel is only 22rem wide, a small phone 20rem). */
+.tabs button { flex: 1 1 auto; min-inline-size: 4.5rem; padding-inline: 0.625rem; white-space: nowrap; scroll-snap-align: center; }
+.tabs .badge { margin-inline-start: 0.125rem; padding-inline: 0.3125rem; }
 
 /* ---------- Chat bubbles: other people's messages over the picture while the chat panel is out of sight ---------- */
 
@@ -1172,7 +1280,7 @@ dialog.details::backdrop { background: #000a; }
 @keyframes bubble-life {
   0% { opacity: 0; transform: translateX(1rem) scale(0.96); }
   4%, 90% { opacity: 0.92; transform: none; }
-  100% { opacity: 0; }
+  100% { opacity: 0; transform: translateY(-0.25rem) scale(0.97); }
 }
 
 @keyframes bubble-fade { 0%, 100% { opacity: 0; } 4%, 90% { opacity: 0.92; } }
@@ -1214,7 +1322,7 @@ dialog.details::backdrop { background: #000a; }
   min-block-size: var(--tap);
   padding: 0.25rem 0.375rem 0.25rem 0.875rem;
   border: 1px solid var(--gold);
-  border-radius: 999px;
+  border-radius: 1.375rem;
   background: #1b1508f2;
   color: #fff;
   font: inherit;
@@ -1224,7 +1332,8 @@ dialog.details::backdrop { background: #000a; }
 }
 
 .play-demand svg { flex: 0 0 auto; inline-size: 1.25rem; block-size: 1.25rem; color: var(--gold); }
-.play-demand span { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The sentence wraps (a long name breaks inside the word) so the verb is never cut off: "Bartholomew-… is waiting". */
+.play-demand span { min-inline-size: 0; text-align: start; line-height: 1.25; overflow-wrap: anywhere; }
 .play-demand strong { color: var(--gold); }
 .play-demand em { flex: 0 0 auto; padding: 0.375rem 0.875rem; border-radius: 999px; background: var(--gold); color: var(--gold-ink); font-style: normal; font-weight: 700; }
 .play-demand:disabled { opacity: 0.6; }
@@ -1260,8 +1369,9 @@ dialog.details::backdrop { background: #000a; }
   border-radius: 0.75rem;
   background: var(--control);
 }
-.volume-mute { display: grid; place-items: center; flex: 0 0 auto; inline-size: var(--tap); block-size: var(--tap); padding: 0; border: 0; border-radius: 0.625rem; background: transparent; color: var(--text); cursor: pointer; }
-.volume-mute svg { inline-size: 1.375rem; block-size: 1.375rem; }
+.volume-mute, .volume-close { display: grid; place-items: center; flex: 0 0 auto; inline-size: var(--tap); block-size: var(--tap); padding: 0; border: 0; border-radius: 0.625rem; background: transparent; color: var(--text); cursor: pointer; }
+.volume-mute svg, .volume-close svg { inline-size: 1.375rem; block-size: 1.375rem; }
+.volume-close { color: var(--muted); }
 .volume-percent { flex: 0 0 auto; min-inline-size: 3ch; color: var(--muted); font-size: 0.9375rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: end; }
 .volume-range {
   --fill: 100%;
@@ -1286,14 +1396,14 @@ dialog.details::backdrop { background: #000a; }
 
 /* In full screen and on a sideways phone the buttons float over the picture. The row floats with them, fades with them,
    and everything above it (timeline, subtitles) moves up to make room. */
-.player:fullscreen > .player-deck .volume-row { background: #000000b3; border-color: #ffffff26; transition: opacity 0.25s ease; }
-.player[data-controls="off"]:fullscreen > .player-deck .volume-row { opacity: 0; pointer-events: none; }
+.player:fullscreen > .player-deck .volume-row { background: #000000b3; border-color: #ffffff26; transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out); }
+.player[data-controls="off"]:fullscreen > .player-deck .volume-row { opacity: 0; transform: translateY(0.5rem); pointer-events: none; }
 .player[data-volume="open"]:fullscreen .player-timeline { inset-block-end: 8.5rem; }
 .player[data-volume="open"][data-controls="on"]:fullscreen .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 10.75rem); }
 .player[data-volume="open"][data-controls="on"]:fullscreen .player-waiting { inset-block-end: 11.25rem; }
 @media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) {
-  .player > .player-deck .volume-row { background: #000000b3; border-color: #ffffff26; transition: opacity 0.25s ease; }
-  .player[data-controls="off"] > .player-deck .volume-row { opacity: 0; pointer-events: none; }
+  .player > .player-deck .volume-row { background: #000000b3; border-color: #ffffff26; transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out); }
+  .player[data-controls="off"] > .player-deck .volume-row { opacity: 0; transform: translateY(0.5rem); pointer-events: none; }
   .player[data-volume="open"] .player-timeline { inset-block-end: 8rem; }
   .player[data-volume="open"][data-controls="on"] .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 10.25rem); }
   .player[data-volume="open"][data-controls="on"] .player-waiting { inset-block-end: 10.75rem; }
@@ -1304,9 +1414,16 @@ dialog.details::backdrop { background: #000a; }
 .storage p { margin: 0; color: var(--muted); font-size: 0.8125rem; }
 .storage strong { color: var(--text); }
 .storage-bar { block-size: 0.5rem; border-radius: 999px; background: var(--edge); overflow: hidden; }
-.storage-bar i { display: block; block-size: 100%; border-radius: inherit; background: var(--gold); transition: inline-size 0.3s ease; }
+.storage-bar i { display: block; block-size: 100%; background: var(--gold); transform-origin: 0 50%; transition: transform var(--dur-slow) var(--ease-out), background-color var(--dur-med) ease-out; }
 .storage-bar i[data-full="true"] { background: var(--bad); }
-.video-delete { inline-size: 100%; min-block-size: var(--tap); margin-block-start: 0.25rem; color: var(--muted); font-size: 0.8125rem; }
+.video-delete { display: inline-grid; place-items: center; inline-size: 100%; min-block-size: var(--tap); margin-block-start: 0.25rem; color: var(--muted); font-size: 0.875rem; text-align: center; }
+/* Both labels sit in the same cell, so the button is always as wide and as tall as the longer one: asking "Sure?" changes only
+   the words and the colour, and the second tap lands where the first one did. */
+.video-delete > .cb-label { grid-area: 1 / 1; overflow-wrap: anywhere; }
+/* Leave room: stays at the bottom of the People pane while its list scrolls. */
+.leave-bar { position: sticky; inset-block-end: calc(-1 * var(--gutter)); z-index: 2; display: grid; gap: 0.5rem; margin-inline: calc(-1 * var(--gutter)); margin-block-end: calc(-1 * var(--gutter)); padding: 0.5rem var(--gutter) max(var(--gutter), env(safe-area-inset-bottom, 0px)); border-block-start: 1px solid var(--edge); background: var(--page); }
+.leave-bar .video-delete { margin-block-start: 0; }
+.video-delete > .cb-label[data-shown="false"] { visibility: hidden; }
 .video-delete[data-confirm="true"] { border-color: var(--bad); color: var(--bad); font-weight: 700; }
 
 /* ---------- Short portrait windows ---------- */
@@ -1368,9 +1485,11 @@ html[data-keyboard="open"] .details-sheet { max-block-size: calc(var(--vvh, 100d
 .lang-options button { min-block-size: 4rem; border: 2px solid var(--edge); border-radius: 1rem; background: var(--panel); color: var(--text); font: inherit; font-size: 1.375rem; font-weight: 700; cursor: pointer; }
 .lang-options button[data-suggested="true"] { border-color: var(--gold); background: #362c20; color: var(--gold); }
 .lang-note { margin: 0; color: var(--muted); font-size: 0.875rem; }
-.lang-switch { display: flex; gap: 0.5rem; }
-.lang-switch button { flex: 1; min-block-size: var(--tap); border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--control); color: var(--text); font: inherit; font-weight: 650; cursor: pointer; }
-.lang-switch button[aria-checked="true"] { border-color: var(--gold); background: #362c20; color: var(--gold); }
+.lang-switch { display: flex; justify-content: center; gap: 0.25rem; margin-block-start: 1.25rem; }
+.lang-switch button { flex: 0 1 auto; min-block-size: var(--tap); padding-inline: 1rem; border: 1px solid transparent; border-radius: 0.75rem; background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; }
+.lang-switch button[aria-checked="true"] { border-color: var(--edge); background: var(--control); color: var(--gold); }
+.set-group .lang-switch, .details-sheet .lang-switch { justify-content: flex-start; margin-block-start: 0; }
+.admin .lang-switch { margin-block-start: 0.5rem; }
 
 /* Bubbles are bigger now, so on a short screen only the newest two are shown. That keeps them clear of the timeline and
    the buttons that float at the bottom while the controls are up. */
@@ -1387,7 +1506,7 @@ html[data-keyboard="open"] .details-sheet { max-block-size: calc(var(--vvh, 100d
 .subs-tracks { max-block-size: 11.5rem; overflow-y: auto; overscroll-behavior: contain; }
 .set-select { inline-size: 100%; min-block-size: var(--tap); padding: 0 0.75rem; border: 1px solid var(--edge); border-radius: 0.625rem; background: var(--page); color: var(--text); font: inherit; font-size: 1rem; }
 /* Subtitles are on, but their panel is closed: the button says so in gold. */
-.player-button[data-on="true"]:not([aria-pressed="true"]) { color: var(--gold); }
+.player-button[data-on="true"]:not([aria-pressed="true"]):not([aria-expanded="true"]) { color: var(--gold); }
 
 /* ---------- Cheaper rendering ---------- */
 /* Each chat line is laid out and styled on its own, so a new message does not make the browser re-check the rest. */
@@ -1423,7 +1542,9 @@ button, [role="button"], [role="tab"], [role="radio"], select, summary { touch-a
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* The ring stops in both "less motion" and the weak-phone mode; the words beside it ("Buffering…") still say what is going on. */
 @media (prefers-reduced-motion: reduce) { .player-spinner i { animation: none; border-color: var(--gold); } }
+:root[data-perf="lite"] .player-spinner i { animation: none; border-color: var(--gold); }
 [data-perf="lite"] .player-spinner { background: #0b0e14f2; }
 
 .buffering-tag { padding: 0.125rem 0.5rem; border-radius: 999px; background: #362c20; color: var(--gold); font-size: 0.6875rem; font-weight: 700; }
@@ -1448,7 +1569,13 @@ button, [role="button"], [role="tab"], [role="radio"], select, summary { touch-a
   background: var(--panel);
 }
 .gate-card h1 { margin: 0.5rem 0 0; font: 400 1.75rem/1.1 Georgia, serif; letter-spacing: -0.03em; }
-.admin-link { color: var(--muted); }
+.admin-link { display: inline-flex; align-items: center; min-block-size: var(--tap); color: var(--muted); font-size: 0.75rem; }
+.sheet-note:has(> .admin-link) { margin-block-start: 0; }
+.gate-check { margin-block-start: 1rem; }
+.gate-status { min-block-size: 1.2rem; margin: 0.25rem 0 0.5rem; }
+.gate-admin { margin-block-start: 0.5rem; }
+.gate-admin .join-form { margin-block-start: 0; }
+.gate-admin .fold-note { line-height: 1.4; }
 
 .admin {
   display: grid;
@@ -1466,15 +1593,449 @@ button, [role="button"], [role="tab"], [role="radio"], select, summary { touch-a
 .admin-card h2 { margin: 0; font-size: 1rem; }
 .admin-card .sheet-note { margin: 0; }
 .admin-state { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
-.admin-state i, .admin-person i { inline-size: 0.5rem; block-size: 0.5rem; flex: none; border-radius: 50%; background: var(--bad); }
-.admin-state[data-open="true"] i, .admin-person[data-online="true"] i { background: var(--good); }
+.admin-state i { inline-size: 0.5rem; block-size: 0.5rem; flex: none; border-radius: 50%; background: var(--bad); }
+.admin-state[data-open="true"] i { background: var(--good); }
 .admin-room { display: grid; gap: 0.5rem; padding: 0.75rem; border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--control); }
-.admin-room-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
-.admin-room-head > div { display: grid; min-inline-size: 0; flex: 1 1 12rem; }
-.admin-room-head strong { overflow-wrap: anywhere; }
-.admin-room-head span { color: var(--muted); font-size: 0.8125rem; }
-.admin-room .video-delete { inline-size: auto; flex: none; margin: 0; padding-inline: 0.75rem; }
+/* A room: the summary (tap to open or fold) on the left, Close room on the right, always on the same line. */
+.admin-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.admin-card-head .video-delete { inline-size: auto; flex: 1 1 14rem; margin: 0; padding-inline: 0.75rem; }
+.admin-room-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; }
+.admin-room-toggle { display: grid; gap: 0.0625rem; min-inline-size: 0; min-block-size: var(--tap); padding: 0 0 0 1.125rem; border: 0; background: none; color: var(--text); font: inherit; text-align: start; cursor: pointer; position: relative; }
+.admin-room-toggle::before { content: ""; position: absolute; inset-block-start: 50%; inset-inline-start: 0.125rem; inline-size: 0.4375rem; block-size: 0.4375rem; border-inline-end: 2px solid var(--muted); border-block-end: 2px solid var(--muted); transform: translateY(-75%) rotate(-45deg); transition: transform var(--dur-fast) ease-out; }
+.admin-room-toggle[aria-expanded="true"]::before { transform: translateY(-75%) rotate(45deg); }
+.admin-room-toggle strong { overflow-wrap: anywhere; }
+/* The number of people comes first and the line may wrap to a second row, so a long video title never hides it. */
+.admin-room-toggle span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; color: var(--muted); font-size: 0.8125rem; }
+.admin-room .video-delete { inline-size: auto; flex: none; margin: 0; padding-inline: 0.5rem; }
+@media (max-width: 22.5rem) { .admin-card { padding: 0.75rem; } .admin-room { padding: 0.5rem 0.625rem; } }
 .admin-people { display: grid; gap: 0.375rem; margin: 0; padding: 0; list-style: none; }
-.admin-people li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
-.admin-person { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-inline-size: 0; overflow-wrap: anywhere; }
-.admin-person small { color: var(--muted); font-size: 0.75rem; }
+/* A person: dot, name (cut with an ellipsis after two lines), Remove on the right; host and connection chips on a second line. */
+.admin-people li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 0.5rem; row-gap: 0; }
+.admin-dot { inline-size: 0.5rem; block-size: 0.5rem; border-radius: 50%; background: var(--bad); }
+.admin-people li[data-online="true"] .admin-dot { background: var(--good); }
+.admin-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; min-inline-size: 0; overflow: hidden; overflow-wrap: anywhere; }
+.admin-people li > .video-delete { grid-column: 3; grid-row: 1 / span 2; inline-size: auto; margin: 0; padding-inline: 0.75rem; }
+.admin-chips { grid-column: 2; display: flex; flex-wrap: wrap; gap: 0.125rem 0.5rem; min-inline-size: 0; margin-block-end: 0.125rem; }
+.admin-chips small { color: var(--muted); font-size: 0.75rem; }
+
+/* ---------- Video tab: tools folded under the list ---------- */
+
+.fold { border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--panel); }
+.fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: var(--tap);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::after { content: ""; flex: none; inline-size: 0.5rem; block-size: 0.5rem; margin-inline-start: 0.25rem; border-inline-end: 2px solid var(--muted); border-block-end: 2px solid var(--muted); transform: translateY(-0.125rem) rotate(45deg); }
+.fold[open] > summary::after { transform: translateY(0.125rem) rotate(-135deg); }
+.fold > summary small { margin-inline-start: auto; color: var(--gold); font-size: 0.75rem; font-weight: 700; }
+.fold-body { display: grid; gap: 0.5rem; padding: 0 0.75rem 0.75rem; }
+.fold-note { margin: 0; color: var(--muted); font-size: 0.75rem; }
+.fold .quality-choice { margin: 0; }
+
+/* ---------- Full screen and a sideways phone: reactions and the message button over the picture ---------- */
+/* The room panel is out of sight in those views, so its reaction row and message box are offered here, in the top corner
+   (the controls at the bottom and the chat bubbles on the right stay clear). Same 44px targets; fades with the controls. */
+
+.live-dock {
+  display: none;
+  position: absolute;
+  z-index: 4;
+  inset-block-start: 0.5rem;
+  inset-inline-start: max(0.5rem, env(safe-area-inset-left, 0px));
+  max-inline-size: calc(100% - 1rem);
+  padding: 0 0.25rem;
+  overflow-x: auto;
+  border-radius: 999px;
+  background: #0b0e14b3;
+  scrollbar-width: none;
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+.live-dock::-webkit-scrollbar { display: none; }
+.live-dock button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: var(--tap);
+  block-size: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  font-size: 1.375rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform var(--dur-med) var(--ease-spring);
+}
+.live-dock button:active { transform: scale(1.25); }
+.live-dock .live-chat { margin-inline-start: 0.125rem; border-inline-start: 1px solid #ffffff33; border-radius: 0 50% 50% 0; }
+.player:fullscreen .live-dock { display: flex; }
+.player[data-controls="off"] .live-dock { opacity: 0; pointer-events: none; }
+.player:fullscreen .chat-bubbles { inset-block-start: 4rem; }
+.player:fullscreen .player-sound { inset-block-start: 3.75rem; }
+@media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) {
+  .live-dock { display: flex; }
+  .chat-bubbles { inset-block-start: 4rem; max-block-size: calc(100% - 4rem - 9rem); }
+  .player-sound { inset-block-start: 3.75rem; }
+}
+[data-perf="lite"] .live-dock { background: #0b0e14e6; }
+
+/* ---------- Sign-in notices and the management page ---------- */
+
+.default-password { display: grid; gap: 0.25rem; margin-block-start: 1rem; }
+.default-password p { margin: 0; }
+.default-password .player-dismiss { justify-self: start; padding-inline: 0; }
+.panel > .default-password[data-floating="true"] {
+  position: absolute;
+  z-index: 6;
+  inset-inline: 0.5rem;
+  inset-block-start: calc(var(--tap) + 0.375rem);
+  margin: 0;
+  box-shadow: 0 0.5rem 1.5rem #000a;
+}
+.admin-lock { inline-size: auto; justify-self: start; margin: 0; padding-inline: 1.25rem; }
+.admin-card > [role="status"] { margin: 0; }
+.admin-steps { display: grid; gap: 0.25rem; margin: 0; padding-inline-start: 1.25rem; color: var(--muted); font-size: 0.875rem; }
+.admin-cta { display: inline-flex; align-items: center; justify-content: center; justify-self: start; text-decoration: none; }
+
+/* ==========================================================================
+   Motion
+   --------------------------------------------------------------------------
+   All the new animation lives here, at the end, so it can be read (and switched off) in one place.
+
+   Rules of the house:
+   - Only `transform` and `opacity` move, so the browser can run them on the compositor. The few colour fades are on
+     small buttons. Nothing animates width, height, top or left, and nothing touches the <video> element or the
+     picture around it.
+   - Entrances ease out (--ease-out), exits ease in and are shorter (--dur-exit), presses overshoot slightly (--ease-spring).
+   - Entrances use `backwards` fill and no end state, so nothing keeps a transform afterwards (a lingering transform would
+     become the containing block for anything fixed inside it).
+   - Every duration and delay comes from a token. Under prefers-reduced-motion, and in the weak-phone "lite" mode
+     (<html data-perf="lite">), the tokens collapse to ~0 at the top of this file, so every rule below becomes instant
+     without being repeated. A few rules with their own fixed timings are switched off at the very end.
+   - Exits need the element to stay in the page a moment: see app/motion.ts. Those elements carry data-closing="true" or
+     data-leaving="true" and are inert, so they take no touches and are skipped by screen readers' focus order.
+   ========================================================================== */
+
+@keyframes m-fade { from { opacity: 0; } }
+@keyframes m-rise { from { opacity: 0; transform: translateY(var(--rise, 0.5rem)); } }
+@keyframes m-drop { from { opacity: 0; transform: translateY(calc(var(--drop, 0.5rem) * -1)); } }
+@keyframes m-pop { from { opacity: 0; transform: scale(0.8); } }
+@keyframes m-out-up { to { opacity: 0; transform: translateY(-0.375rem); } }
+@keyframes m-out-down { to { opacity: 0; transform: translateY(0.375rem); } }
+@keyframes m-leave { to { opacity: 0; transform: translateX(0.625rem); } }
+@keyframes m-nudge {
+  from { opacity: 0; transform: translateX(-0.25rem); }
+  30% { opacity: 1; transform: translateX(0.1875rem); }
+  60% { transform: translateX(-0.125rem); }
+  to { transform: none; }
+}
+
+/* ---------- First paint: lock screen, language chooser, join sheet, top bar ---------- */
+
+.gate-card, .lang-card, .sheet { animation: m-rise var(--dur-slow) var(--ease-out) backwards; --rise: 0.75rem; }
+.topbar { animation: m-drop var(--dur-med) var(--ease-out) backwards; --drop: 0.5rem; }
+.panel { animation: m-fade var(--dur-slow) var(--ease-out) backwards; }
+.stage-empty { animation: m-fade var(--dur-slow) var(--ease-out) backwards; }
+
+/* Lists that build themselves one row after another: a short stagger, at most five steps. */
+:is(.video-list, .lang-options, .admin) > :nth-child(2) { --i: 1; }
+:is(.video-list, .lang-options, .admin) > :nth-child(3) { --i: 2; }
+:is(.video-list, .lang-options, .admin) > :nth-child(4) { --i: 3; }
+:is(.video-list, .lang-options, .admin) > :nth-child(5) { --i: 4; }
+:is(.video-list, .lang-options, .admin) > :nth-child(n + 6) { --i: 5; }
+.video-list > li, .lang-options button, .admin > * {
+  animation: m-rise var(--dur-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+  --rise: 0.625rem;
+}
+
+/* ---------- Buttons: hover, press, state change ---------- */
+
+:is(
+  .btn, .player-button, .lang-options button, .lang-switch button, .settings-tabs button, .segmented button, .nudges button,
+  .chips button, .quality-choice button, .quality-rows button, .tabs button, .mention-person, .mention-list li, .volume-mute,
+  .switch-row, .swatch, .emoji-toggle, .video-item, .jump-latest, .player-sound, .play-demand, .settings-reset, .player-dismiss, .settings-close
+) {
+  transition:
+    background-color var(--dur-fast) ease-out, border-color var(--dur-fast) ease-out, color var(--dur-fast) ease-out,
+    opacity var(--dur-fast) ease-out, transform var(--dur-fast) var(--ease-spring);
+}
+
+/* Pressed: a small dip. 44px targets stay 44px: the box is only scaled while the finger is down. */
+:is(
+  .btn, .player-button, .lang-options button, .lang-switch button, .settings-tabs button, .segmented button, .nudges button,
+  .chips button, .quality-choice button, .quality-rows button, .tabs button, .mention-person, .mention-list li, .volume-mute,
+  .switch-row, .emoji-toggle, .video-item, .jump-latest, .player-sound, .play-demand
+):not(:disabled):active { transform: scale(0.97); }
+.player-button:not(:disabled):active { transform: scale(0.94); }
+.swatch:active { transform: scale(0.9); }
+.video-item:not(:disabled):active { transform: scale(0.985); }
+
+@media (hover: hover) {
+  .btn-primary:not(:disabled):hover { background: #ffd9a0; }
+  .video-item:not(:disabled):hover { border-color: #4a586c; }
+  .video-item[data-current="true"]:hover { border-color: var(--gold); }
+  .lang-options button:hover { border-color: var(--muted); }
+  .lang-options button[data-suggested="true"]:hover { border-color: var(--gold); }
+  .mention-list li:hover { background: var(--control); }
+  .tabs button[aria-selected="false"]:hover, .segmented [aria-checked="false"]:hover, .settings-tabs [aria-selected="false"]:hover,
+  .quality-choice [aria-checked="false"]:hover { color: var(--text); }
+  .nudges button:not(:disabled):hover, .chips button:hover, .quality-rows button:hover { border-color: var(--muted); }
+}
+
+/* The icon on the play, mute and full screen buttons pops in when it changes (the player gives each icon a key). */
+.player-button svg { animation: m-pop var(--dur-med) var(--ease-spring) backwards; }
+.badge, .struggle, .buffering-tag { animation: m-pop var(--dur-med) var(--ease-spring) backwards; }
+
+.switch-row i { transition: background-color var(--dur-fast) ease-out, border-color var(--dur-fast) ease-out; }
+.swatch { transition: box-shadow var(--dur-fast) ease-out, border-color var(--dur-fast) ease-out, transform var(--dur-fast) var(--ease-spring); }
+
+/* Sliders: the thumb grows a little under the finger. (The -webkit- and -moz- rules must stay apart: one unknown selector drops its whole rule.) */
+.player-timeline input::-webkit-slider-thumb, .volume-range::-webkit-slider-thumb { transition: transform var(--dur-fast) var(--ease-spring); }
+.player-timeline input::-moz-range-thumb, .volume-range::-moz-range-thumb { transition: transform var(--dur-fast) var(--ease-spring); }
+.player-timeline input:not(:disabled):active::-webkit-slider-thumb, .volume-range:active::-webkit-slider-thumb { transform: scale(1.25); }
+.player-timeline input:not(:disabled):active::-moz-range-thumb, .volume-range:active::-moz-range-thumb { transform: scale(1.25); }
+
+/* The big play button over the picture: its circle pops in and dips when pressed (the dark scrim behind it stays still). */
+.player-tap span { animation: m-pop var(--dur-med) var(--ease-spring) backwards; transition: transform var(--dur-fast) var(--ease-spring); }
+.player-tap:active span { transform: scale(0.92); }
+
+/* ---------- Language chooser and switches ---------- */
+
+.lang-options button[data-suggested] { transition: background-color var(--dur-med) ease-out, border-color var(--dur-med) ease-out, color var(--dur-med) ease-out, transform var(--dur-fast) var(--ease-spring); }
+
+/* ---------- Room panel tabs: a gold line that slides to the chosen tab ---------- */
+/* RoomPanel measures the chosen tab and sets --tab-x / --tab-w on the row, and data-measured once it has. Until then the
+   old per-tab underline is shown, so the chosen tab is never unmarked. */
+
+.tabs { position: relative; }
+.tabs::after {
+  content: "";
+  display: none;
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  inline-size: 1px;
+  block-size: 2px;
+  background: var(--gold);
+  transform-origin: 0 50%;
+  transform: translateX(calc(var(--tab-x, 0) * 1px)) scaleX(var(--tab-w, 0));
+}
+.tabs[data-measured]::after { display: block; }
+.tabs[data-measured] button[aria-selected="true"] { border-block-end-color: transparent; }
+.tabs[data-slide]::after { transition: transform var(--dur-med) var(--ease-out); }
+
+/* A panel's content arrives as a short rise; the Chat panel is hidden, not removed, so it plays each time it is shown again. */
+.pane:not([hidden]) { animation: m-rise var(--dur-med) var(--ease-out) backwards; --rise: 0.375rem; }
+.settings-body > * { animation: m-fade var(--dur-med) var(--ease-out) backwards; }
+
+/* ---------- Segmented controls with equal parts: the highlight slides ---------- */
+/* Needs :has() to know which part is chosen. Without it the old per-button highlight stays. */
+
+@supports selector(:has(*)) {
+  .settings-tabs, .quality-choice { position: relative; }
+  .settings-tabs::before, .quality-choice::before {
+    content: "";
+    position: absolute;
+    inset-block: 0.1875rem;
+    inset-inline-start: 0.1875rem;
+    border-radius: 0.5rem;
+    background: var(--gold);
+    transition: transform var(--dur-med) var(--ease-out), opacity var(--dur-fast) ease-out;
+  }
+  .settings-tabs::before { inline-size: calc((100% - 0.375rem - 0.5rem) / 3); }
+  .quality-choice::before { inline-size: calc((100% - 0.375rem - 0.25rem) / 2); }
+  .settings-tabs:has(> :nth-child(2)[aria-selected="true"])::before, .quality-choice:has(> :nth-child(2)[aria-checked="true"])::before { transform: translateX(calc(100% + 0.25rem)); }
+  .settings-tabs:has(> :nth-child(3)[aria-selected="true"])::before { transform: translateX(calc(200% + 0.5rem)); }
+  .quality-choice:not(:has([aria-checked="true"]))::before { opacity: 0; }
+  .settings-tabs button, .quality-choice button { position: relative; }
+  .settings-tabs [aria-selected="true"], .quality-choice button[aria-checked="true"] { background: none; color: var(--gold-ink); }
+}
+
+/* ---------- Chat ---------- */
+
+/* A line that arrives while the chat is open slides up out of its own corner. History is simply there. */
+@keyframes msg-in { from { opacity: 0; transform: translateY(0.5rem) scale(0.96); } }
+.chat-message[data-fresh="true"] { animation: msg-in var(--dur-med) var(--ease-out) backwards; transform-origin: 0 100%; }
+.chat-message[data-fresh="true"][data-own="true"] { transform-origin: 100% 100%; }
+.chat-message[data-fresh="true"][data-mention="true"] { animation: msg-in var(--dur-med) var(--ease-out) backwards, mention-flash 1.8s ease-out 1; }
+
+.mention-toast[data-closing="true"] { animation: m-out-up var(--dur-exit) var(--ease-in) forwards; pointer-events: none; }
+.jump-latest { animation: m-rise var(--dur-med) var(--ease-out) backwards; --rise: 0.5rem; }
+.jump-latest[data-closing="true"] { animation: m-out-down var(--dur-exit) var(--ease-in) forwards; pointer-events: none; }
+.emoji-picker, .mention-list { animation: m-rise var(--dur-fast) var(--ease-out) backwards; --rise: 0.5rem; }
+
+/* ---------- Status pill ---------- */
+
+.status-pill { animation: m-fade var(--dur-med) ease-out backwards; transition: background-color var(--dur-med) ease-out, color var(--dur-med) ease-out; }
+.status-pill i { position: relative; transition: background-color var(--dur-med) ease-out; }
+/* Becoming live: one ring spreads out from the dot. */
+.status-pill[data-state="connected"] i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--good);
+  animation: dot-ping calc(var(--dur-slow) * 3) var(--ease-out) 1 both;
+}
+@keyframes dot-ping { from { opacity: 0.7; transform: scale(1); } to { opacity: 0; transform: scale(3); } }
+
+/* ---------- People, uploads, admin rows: arrive and leave ---------- */
+
+.people li, .upload, .admin-room, .admin-people li { animation: m-rise var(--dur-med) var(--ease-out) backwards; --rise: 0.375rem; }
+:is(.people li, .upload, .admin-room, .admin-people li)[data-leaving="true"] { animation: m-leave var(--dur-exit) var(--ease-in) forwards; pointer-events: none; }
+.avatar, .admin-state i, .admin-dot { transition: background-color var(--dur-med) ease-out; }
+
+/* ---------- Confirm-twice buttons ---------- */
+/* The first tap pops the button into its warning look; a thin line then runs down the time left to confirm. */
+
+.video-delete { position: relative; overflow: hidden; transition: background-color var(--dur-fast) ease-out, border-color var(--dur-fast) ease-out, color var(--dur-fast) ease-out, transform var(--dur-fast) var(--ease-spring), opacity var(--dur-fast) ease-out; }
+.video-delete[data-confirm="true"] { background: #33201c; animation: confirm-pop var(--dur-med) var(--ease-spring); }
+.video-delete[data-confirm="true"]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: 2px;
+  background: var(--bad);
+  transform-origin: 0 50%;
+  animation: confirm-countdown var(--confirm-for, 6s) linear forwards;
+}
+.video-delete:disabled::after { display: none; }
+@keyframes confirm-pop { from { transform: scale(0.95); } }
+@keyframes confirm-countdown { to { transform: scaleX(0); } }
+
+/* ---------- Messages and errors ---------- */
+
+:is(.room-error, .player-notice, .player-error, .player-struggle, .struggle-banner, .player-waiting, .sheet-note[role], .invite-link, .player-sound) {
+  animation: m-rise var(--dur-med) var(--ease-out) backwards;
+  --rise: 0.25rem;
+}
+/* A refusal (wrong password, removed from a room) shakes sideways once. */
+.room-error[role="alert"] { animation: m-nudge calc(var(--dur-slow) * 1.5) var(--ease-out) backwards; }
+
+/* ---------- Player: control row, panels, buffering ---------- */
+
+.player-deck { animation: m-rise var(--dur-med) var(--ease-out) backwards; --rise: 0.5rem; }
+
+/* Settings and Subtitles. Below the buttons they drop down; on a phone held sideways they are a drawer from the right. */
+@keyframes panel-in { from { opacity: 0; transform: translateY(-0.5rem); } }
+@keyframes panel-out { to { opacity: 0; transform: translateY(-0.375rem); } }
+@keyframes panel-in-side { from { opacity: 0; transform: translateX(1.5rem); } }
+@keyframes panel-out-side { to { opacity: 0; transform: translateX(1rem); } }
+.player-settings { animation: panel-in var(--dur-med) var(--ease-out) backwards; }
+.player-settings[data-closing="true"] { animation: panel-out var(--dur-exit) var(--ease-in) forwards; pointer-events: none; }
+@media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) {
+  .player-settings { animation-name: panel-in-side; }
+  .player-settings[data-closing="true"] { animation-name: panel-out-side; }
+}
+
+.volume-row { animation: m-drop var(--dur-med) var(--ease-out) backwards; --drop: 0.375rem; }
+.volume-row[data-closing="true"] { animation: m-out-up var(--dur-exit) var(--ease-in) forwards; pointer-events: none; }
+
+/* Buffering: the notice (its centring transform is part of both keyframes) fades in, and out. The ring keeps spinning. */
+@keyframes spinner-in { from { opacity: 0; transform: translate(-50%, -50%) scale(0.92); } }
+@keyframes spinner-out { to { opacity: 0; transform: translate(-50%, -50%) scale(0.96); } }
+.player-spinner { animation: spinner-in var(--dur-fast) var(--ease-out) backwards; }
+.player-spinner[data-closing="true"] { animation: spinner-out var(--dur-exit) var(--ease-in) forwards; }
+.player-spinner small { animation: m-fade var(--dur-med) ease-out backwards; }
+
+/* ---------- Switched off where a fixed timing is used ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .video-delete::after { display: none; }
+  .chat-message[data-fresh="true"][data-mention="true"] { animation: msg-in var(--dur-med) var(--ease-out) backwards; }
+}
+:root[data-perf="lite"] .video-delete::after { display: none; }
+:root[data-perf="lite"] .chat-message[data-fresh="true"][data-mention="true"] { animation: msg-in var(--dur-med) var(--ease-out) backwards; }
+
+/* ==========================================================================
+   Sheets over the chat (a phone or tablet held upright)
+   --------------------------------------------------------------------------
+   The Settings and Subtitles panels and the Volume row used to push the chat down to make room, which moved the tabs and
+   the message box (and snapped them back when it closed), and starved the chat on a small phone. Now they are laid over the
+   chat instead: out of the page flow, in the grid area the chat occupies (grid-row 3), so opening, closing or switching a
+   settings tab moves nothing. The panel is the same height whichever tab it shows. Wide windows and a phone held sideways
+   keep their own layouts (the panel beside the picture), and so does full screen.
+   ========================================================================== */
+
+@media ((max-width: 61.99rem) or (max-height: 31.99rem)) and (not ((orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2))) {
+  .app { position: relative; }
+  .player:not(:fullscreen) > .player-settings {
+    position: absolute;
+    z-index: 8;
+    grid-row: 3;
+    grid-column: 1;
+    inset: 0;
+    min-block-size: 0;
+    max-block-size: none;
+    flex: none;
+  }
+  /* The chat underneath is not reachable while the sheet covers it, for the keyboard or a screen reader either. */
+  .app:has(.player:not(:fullscreen) > .player-settings:not([data-closing="true"])) > .panel { visibility: hidden; z-index: 9; }
+  /* ...except a new @mention, which still has to be seen: it floats above the sheet (a hidden panel takes no touches, so the sheet stays usable). */
+  .app:has(.player:not(:fullscreen) > .player-settings:not([data-closing="true"])) > .panel .mention-toast { visibility: visible; }
+  /* The volume row takes the place of the button row while it is open (same grid cell, so the deck does not change size and
+     nothing moves). It used to be a bar over the chat's tab row, which made the tabs and the unread badges unreachable. */
+  .player:not(:fullscreen) > .player-deck { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .player:not(:fullscreen) > .player-deck > .player-actions,
+  .player:not(:fullscreen) > .player-deck > .volume-row { grid-row: 1; grid-column: 1; }
+  .player:not(:fullscreen) .volume-row {
+    z-index: 2;
+    inline-size: auto;
+    min-block-size: 3.25rem;
+    margin: 0;
+    gap: 0.5rem;
+    padding: 0 0.25rem 0 0.25rem;
+  }
+  .player[data-volume="open"]:not(:fullscreen) > .player-deck > .player-actions { visibility: hidden; }
+}
+
+/* A desktop window: the same, laid over the room column on the right. The volume row floats over the bottom edge of the picture
+   (just above the buttons), so nothing under it moves either. */
+@media (min-width: 62rem) and (min-height: 32rem) {
+  .app { position: relative; }
+  .player:not(:fullscreen) > .player-settings {
+    position: absolute;
+    z-index: 8;
+    grid-row: 2;
+    grid-column: 2;
+    inset: 0;
+    min-block-size: 0;
+    max-block-size: none;
+    flex: none;
+    border-block-start: 0;
+    border-inline-start: 1px solid var(--edge);
+  }
+  .app:has(.player:not(:fullscreen) > .player-settings:not([data-closing="true"])) > .panel { visibility: hidden; z-index: 9; }
+  .app:has(.player:not(:fullscreen) > .player-settings:not([data-closing="true"])) > .panel .mention-toast { visibility: visible; }
+  .player:not(:fullscreen) > .player-deck { position: relative; }
+  .player:not(:fullscreen) .volume-row {
+    position: absolute;
+    z-index: 3;
+    inset-inline: var(--gutter);
+    inset-block-end: 100%;
+    inline-size: auto;
+    margin: 0 0 0.5rem;
+    background: #0b0e14e6;
+    border-color: #ffffff26;
+  }
+}
+
+/* While the subtitles panel shows its sample line, the notices over the picture ("Waiting for the host…") would sit on top of it. */
+.player[data-panel="subtitles"] .player-waiting { display: none; }
+
+/* The join sheet: the picture above it is only a placeholder. On a small phone it goes, so the button is on screen without scrolling. */
+@media (orientation: portrait) and (max-height: 700px) {
+  .app[data-in-room="false"] .stage { display: none; }
+  .sheet { padding-block-start: 1rem; }
+  .join-form { margin-block-start: 0.875rem; gap: 0.5rem; }
+}

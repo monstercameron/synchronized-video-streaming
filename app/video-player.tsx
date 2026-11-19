@@ -4,18 +4,21 @@ import { countRender } from "./debug-renders";
 import type Hls from "hls.js";
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { PlayerIcon } from "./player-icon";
+import { usePresence } from "./motion";
 import type { Level, SettingsTab } from "./player-settings";
 import dynamic from "next/dynamic";
 import { PlayerTimeline } from "./player-timeline";
 import { useBuffering, useOnline } from "./use-buffering";
 import { SubtitleLayer } from "./subtitle-layer";
-import { useI18n } from "./i18n";
-import { playbackPosition, type MediaInfo, type RoomCommand } from "./room-shared";
+import { problemOf, useI18n, type MessageKey, type Problem } from "./i18n";
+import { rovingRef } from "./roving";
+import { rovingFadeRef } from "./scroll-fade";
+import { playbackPosition, REACTIONS, type MediaInfo, type RoomCommand } from "./room-shared";
 import { fixedHeight, type Quality } from "./use-playback-quality";
 import { useSound } from "./use-sound";
 import { useSubtitleTrack, type Caption } from "./use-subtitle-track";
 import { useVideoHealth } from "./use-video-health";
-import { listNames } from "./screen-layout";
+import { landscapePhoneQuery, listNames } from "./screen-layout";
 import { useIdle } from "./use-idle";
 import { readLead, roomTarget, useRoomPlayback, type PlayerRoom } from "./use-room-playback";
 
@@ -35,6 +38,8 @@ type VideoPlayerProps = {
   onQuality: (quality: Quality) => void;
   /** Drawn over the picture (and kept in full screen), e.g. scrolling reactions. */
   overlay?: ReactNode;
+  /** Opens the message box. The room panel is out of sight in full screen and on a sideways phone, so the player offers it. */
+  onChat?: () => void;
 };
 
 type FullscreenVideo = HTMLVideoElement & {
@@ -119,19 +124,18 @@ function unlockOrientation() {
 const PlayerSettings = dynamic(() => import("./player-settings").then(module => module.PlayerSettings));
 const SubtitlesPanel = dynamic(() => import("./subtitles-panel").then(module => module.SubtitlesPanel));
 
-function VideoPlayerView({ title, source, kind, poster, captions, room, media, lite, quality, onQuality, overlay }: VideoPlayerProps) {
+function VideoPlayerView({ title, source, kind, poster, captions, room, media, lite, quality, onQuality, overlay, onChat }: VideoPlayerProps) {
   countRender("player");
   const i18n = useI18n();
-  const { t, tn, locale } = i18n;
-  // Effects that start once per video read the language through this ref, so switching language does not restart playback.
-  const i18nRef = useRef(i18n);
-  useEffect(() => { i18nRef.current = i18n; });
+  const { t, tn, locale, say } = i18n;
   const playerRef = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const subsButton = useRef<HTMLButtonElement>(null);
+  const volumeButton = useRef<HTMLButtonElement>(null);
   const videoRef = useRef<FullscreenVideo>(null);
   const [attempt, setAttempt] = useState(0);
-  const [error, setError] = useState<string>();
+  // What went wrong is kept as a text key, so it is written in the language chosen at the moment it is shown.
+  const [error, setError] = useState<MessageKey>();
   const [fullscreenError, setFullscreenError] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -142,6 +146,21 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
   const subsOpen = panel === "subtitles";
   // The full-width volume row under the buttons.
   const [volumeOpen, setVolumeOpen] = useState(false);
+  // Panels, the volume row and the buffering notice stay in the page for a moment while they fade out.
+  const panelView = usePresence(panel);
+  const volumeView = usePresence(volumeOpen ? true : null);
+  // Settings, Subtitles and Volume take turns: opening one closes the others, so they never pile up under the buttons.
+  const togglePanel = (next: "settings" | "subtitles") => { setVolumeOpen(false); setPanel(current => current === next ? null : next); };
+  const toggleVolume = () => { setPanel(null); setVolumeOpen(open => !open); };
+  // The mention toast (over a sheet) asks for the sheets to close, so the chat it points to is in view.
+  useEffect(() => {
+    const close = () => { setPanel(null); setVolumeOpen(false); };
+    window.addEventListener("screening:close-sheets", close);
+    return () => window.removeEventListener("screening:close-sheets", close);
+  }, []);
+  const volumeRange = useRef<HTMLInputElement>(null);
+  // Opening the volume row hides the button that opened it (the row takes its place on a phone), so the focus moves to the slider.
+  useEffect(() => { if (volumeOpen) volumeRange.current?.focus({ preventScroll: true }); }, [volumeOpen]);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("quality");
   const [levels, setLevels] = useState<Level[]>([]);
   const [activeLevel, setActiveLevel] = useState(-1);
@@ -152,20 +171,31 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
   // button counts as being active.
   const { active: controlsOn, wake } = useIdle(playerRef, 5000, scrubbing || panel !== null);
 
-  // The button that opened a panel is also how it is closed. Opening a panel can narrow the player (a phone held sideways
-  // puts it beside the picture), which would leave that button scrolled out of sight in the row, so bring it back into view.
-  // Escape closes the panel too.
+  // The button that opened a panel is also how it is closed. On a phone held sideways the panel sits beside the picture and
+  // narrows the player, which can leave that button scrolled out of sight in the row, so bring it back into view there. In
+  // portrait the row is left alone: scrolling it would push Play (the main control) out of sight.
   useEffect(() => {
     if (!panel) return;
     wake();
-    (panel === "settings" ? settingsButton : subsButton).current?.scrollIntoView({ inline: "nearest", block: "nearest" });
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setPanel(null); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    if (matchMedia(landscapePhoneQuery).matches) (panel === "settings" ? settingsButton : subsButton).current?.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [panel, wake]);
+
+  /** Close whatever is open under the buttons and put the focus back on the button that opened it (the panel is about to go, and the focus with it). */
+  const closePanels = () => {
+    const opener = panel === "settings" ? settingsButton : panel === "subtitles" ? subsButton : volumeOpen ? volumeButton : undefined;
+    setPanel(null);
+    setVolumeOpen(false);
+    // A moment later: the buttons under the volume row are hidden while it is open and only come back with the next render.
+    setTimeout(() => opener?.current?.focus(), 0);
+  };
+  // Escape closes a panel only when the focus is in the player (its buttons or the panel itself): Escape in the chat box or its
+  // @-list belongs to them, and is not handled here.
+  const onPlayerKey = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape" && (panel || volumeOpen) && !event.defaultPrevented) { event.preventDefault(); closePanels(); }
+  };
   const subs = useSubtitleTrack(videoRef, captions, nativeFullscreen);
   const [duration, setDuration] = useState(0);
-  const [roomError, setRoomError] = useState("");
+  const [roomError, setRoomError] = useState<Problem>();
   const [commandPending, setCommandPending] = useState(false);
   const seekTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const { needsTap, soundBlocked, held, catchUp, holdLocal, rejoin, enableSound } = useRoomPlayback(videoRef, room);
@@ -235,7 +265,7 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
     let resize: ResizeObserver | undefined;
 
     function reportError() {
-      if (!cancelled) setError(i18nRef.current.t("player.err.load"));
+      if (!cancelled) setError("player.err.load");
     }
 
     // A dropped connection or a hiccup in decoding is retried, with growing pauses, before it is called an error. A phone
@@ -322,7 +352,7 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
       } else if (nativeHls) {
         player.src = source;
       } else {
-        setError(i18nRef.current.t("player.err.hls"));
+        setError("player.err.hls");
       }
     }
 
@@ -395,17 +425,17 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
       await video.play();
     } catch (reason) {
       if (reason instanceof DOMException && reason.name === "AbortError") return;
-      setError(t("player.err.start"));
+      setError("player.err.start");
     }
   }
 
   async function sendPlayback(command: RoomCommand) {
     if (!room) return;
-    setRoomError("");
+    setRoomError(undefined);
     try {
       await room.send(command);
     } catch (reason) {
-      setRoomError(reason instanceof Error ? reason.message : t("player.err.command"));
+      setRoomError(problemOf(reason, "player.err.command"));
     }
   }
 
@@ -474,6 +504,9 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
   // "Pause all" and "Pause me" are different things: the first stops the room for everyone, the second only this device.
   const asked = !!room?.wantPlay?.mine;
   const playLabel = !room ? (playing ? t("player.pause") : t("player.play")) : roomRunning ? t("player.pauseAll") : room.isHost ? t("player.playAll") : asked ? t("player.asked") : t("player.waiting");
+  // In Spanish the visible word is short ("Reproducir"); the name read out still says it is for everyone.
+  // A guest's button is the one that asks the host to start: its name says so, and starts with the visible word.
+  const playAria = room && (roomRunning || room.isHost) ? (roomRunning ? t("player.pauseAllAria") : t("player.playAllAria")) : room && !asked ? t("player.askAria") : undefined;
   const mainIcon = !room ? (playing ? "pause" : "play") : roomRunning ? "pause" : "play";
   // Pausing works as soon as the room is running, even before this device's video has loaded.
   // A viewer can always press the button while paused: it asks the host to play.
@@ -485,10 +518,20 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
   const soundLabel = sound.muted ? t("player.unmute") : t("player.mute");
   const fullscreenLabel = fullscreen ? t("player.exitFullscreen") : t("player.fullscreen");
   const others = (count: number) => t("list.others", { count });
+  // Who asked the host to play. "You" is its own sentence: in Spanish the verb changes ("Le pediste…", not "Tú le pidió…"),
+  // and a request from someone who has since left (no name, not mine) is never shown at all.
+  const askedText = (want: { names: string[]; mine: boolean }) => want.mine && !want.names.length
+    ? t("player.askedHost.mine")
+    : tn("player.askedHost", (want.mine ? 1 : 0) + want.names.length, { names: listNames([...(want.mine ? [t("player.you")] : []), ...want.names], locale, others) });
   const percent = Math.round((sound.muted ? 0 : sound.volume) * 100);
+  const spinnerView = usePresence(
+    (stalled || recovering) && !error
+      ? { label: !online ? t("player.offline") : recovering ? t("player.reconnecting") : stalled === "seeking" ? t("player.seeking") : t("player.buffering"), slow: !!stalledLong && online && !recovering }
+      : null,
+  );
 
   return (
-    <div className="player" ref={playerRef} data-controls={controlsOn ? "on" : "off"} data-volume={volumeOpen ? "open" : "closed"} aria-label={t("player.group", { title })} role="group">
+    <div className="player" ref={playerRef} onKeyDown={onPlayerKey} data-controls={controlsOn ? "on" : "off"} data-volume={volumeOpen ? "open" : "closed"} data-panel={panel ?? "none"} aria-label={t("player.group", { title })} role="group">
       <div className="player-picture">
         <video
           ref={videoRef}
@@ -511,7 +554,9 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
         </video>
         {overlay}
         <SubtitleLayer videoRef={videoRef} list={subs.list} enabled={subs.index >= 0 && !nativeFullscreen} preview={subsOpen} />
-        {showTap && !stalled && (
+        {/* While the Subtitles panel shows its sample line, the host's idle play button would sit right behind it. It steps aside
+            (Play is still in the row of buttons). A viewer's "tap to join" or "rejoin" always stays: missing it means missing the film. */}
+        {showTap && !stalled && !(subsOpen && !held && !(needsTap && roomRunning)) && (
           <button className="player-tap" type="button" onClick={pressTap} aria-label={held ? t("player.tapRejoinAria") : needsTap && roomRunning ? t("player.tapJoinAria") : t("player.play")}>
             <span><PlayerIcon name="play" /></span>
             {held ? <em>{t("player.pausedForYou")}</em> : needsTap && roomRunning && <em>{t("player.tapToJoin")}</em>}
@@ -522,7 +567,7 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
             <PlayerIcon name="muted" /> {t("player.tapForSound")}
           </button>
         )}
-        {room?.isHost && room.wantPlay && !roomRunning && (
+        {room?.isHost && room.wantPlay && room.wantPlay.names.length > 0 && !roomRunning && (
           // The key changes with every new request, so the prompt pulses again each time someone asks.
           <button key={room.wantPlay.ping} className="play-demand" type="button" onClick={pressMain} disabled={commandPending}>
             <PlayerIcon name="play" />
@@ -530,11 +575,11 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
             <em>{t("player.playNow")}</em>
           </button>
         )}
-        {(stalled || recovering) && !error && (
-          <div className="player-spinner" role="status" aria-live="polite">
+        {spinnerView.shown && (
+          <div className="player-spinner" role="status" aria-live="polite" data-closing={spinnerView.closing}>
             <i aria-hidden="true" />
-            <span>{!online ? t("player.offline") : recovering ? t("player.reconnecting") : stalled === "seeking" ? t("player.seeking") : t("player.buffering")}</span>
-            {stalledLong && online && !recovering && <small>{t("player.slowConnection")}</small>}
+            <span>{spinnerView.shown.label}</span>
+            {spinnerView.shown.slow && <small>{t("player.slowConnection")}</small>}
           </div>
         )}
         {syncing && !stalled && <p className="player-waiting" role="status">{t("player.syncing")}</p>}
@@ -546,18 +591,28 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
           <p className="player-waiting" role="status">
             {room.pausedBy
               ? t(room.isHost ? "player.pausedBy" : "player.pausedByViewer", { name: room.pausedBy })
-              : room.wantPlay && !room.isHost
-                ? tn("player.askedHost", (room.wantPlay.mine ? 1 : 0) + room.wantPlay.names.length, { names: listNames([...(room.wantPlay.mine ? [t("player.you")] : []), ...room.wantPlay.names], locale, others) })
+              : !room.isHost && room.wantPlay && (room.wantPlay.mine || room.wantPlay.names.length > 0)
+                ? askedText(room.wantPlay)
                 : t("player.waitHost")}
           </p>
         )}
       <PlayerTimeline videoRef={videoRef} duration={duration} lite={lite} disabled={!duration || !!error || (!!room && !room.isHost)} onSeek={seek} onScrub={setScrubbing} />
+        {room && (
+          // Full screen and a sideways phone hide the room panel, which is where the reactions and the message box live. This strip
+          // brings them over the picture (it is hidden in the normal layout, and fades with the other controls).
+          <div className="live-dock" role="toolbar" aria-label={t("chat.reactions")} ref={rovingRef}>
+            {REACTIONS.map(emoji => (
+              <button key={emoji} type="button" onClick={() => void room.send({ type: "react", emoji }).catch(() => {})} aria-label={t("chat.react", { emoji })}>{emoji}</button>
+            ))}
+            {onChat && <button className="live-chat" type="button" onClick={() => onChat()} aria-label={t("chat.write")}>💬</button>}
+          </div>
+        )}
       </div>
 
       <div className="player-deck">
-        <div className="player-actions">
-          <button className="player-button player-play" type="button" onClick={pressMain} disabled={!canPlay} title={room && !room.isHost && !roomRunning ? t("player.askTitle") : undefined}>
-            <PlayerIcon name={mainIcon} />
+        <div className="player-actions" role="toolbar" aria-label={t("player.controls")} ref={rovingFadeRef}>
+          <button className="player-button player-play" type="button" onClick={pressMain} disabled={!canPlay} aria-label={playAria} title={room && !room.isHost && !roomRunning ? t("player.askTitle") : undefined}>
+            <PlayerIcon key={mainIcon} name={mainIcon} />
             <span>{playLabel}</span>
           </button>
           {room && (
@@ -565,46 +620,46 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
               className="player-button" type="button" onClick={held ? rejoin : holdLocal} disabled={!held && !roomRunning}
               aria-pressed={held} title={held ? t("player.rejoinTitle") : t("player.holdTitle")}
             >
-              <PlayerIcon name={held ? "playMe" : "pauseMe"} />
+              <PlayerIcon key={held ? "playMe" : "pauseMe"} name={held ? "playMe" : "pauseMe"} />
               <span>{held ? t("player.rejoin") : t("player.pauseMe")}</span>
             </button>
           )}
-          <button className="player-button" type="button" onClick={() => { sound.prepare(); sound.toggleMute(); }} aria-pressed={sound.muted}>
-            <PlayerIcon name={sound.muted ? "muted" : "volume"} />
-            <span>{soundLabel}</span>
+          <button className="player-button" type="button" onClick={toggleFullscreen} aria-label={fullscreenLabel} disabled={!duration || !!error}>
+            <PlayerIcon key={fullscreen ? "shrink" : "expand"} name={fullscreen ? "shrink" : "expand"} />
+            <span>{fullscreen ? t("player.exit") : t("player.fullscreenShort")}</span>
           </button>
-          {sound.volumeWorks && (
-            // Opens a row with the volume slider, for this device only: handy when WhatsApp or Discord is open next to the film.
-            <button className="player-button" type="button" onClick={() => { sound.prepare(); setVolumeOpen(open => !open); }} aria-expanded={volumeOpen} aria-pressed={volumeOpen} aria-controls="volume-row" title={t("player.volumeSlider")}>
-              <PlayerIcon name="levels" />
-              <span>{t("player.volume")}</span>
-            </button>
-          )}
+          <button ref={settingsButton} className="player-button" type="button" onClick={() => togglePanel("settings")} aria-expanded={settingsOpen} aria-label={t("player.settingsAria")} title={settingsOpen ? t("player.closeSettings") : t("player.settings")}>
+            <PlayerIcon name="settings" />
+            <span>{t("player.settings")}</span>
+          </button>
           <button
-            ref={subsButton} className="player-button" type="button" onClick={() => setPanel(current => current === "subtitles" ? null : "subtitles")}
-            aria-expanded={subsOpen} aria-pressed={subsOpen} data-on={subs.index >= 0} disabled={!captions.length}
+            ref={subsButton} className="player-button" type="button" onClick={() => togglePanel("subtitles")}
+            aria-expanded={subsOpen} data-on={subs.index >= 0} disabled={!captions.length}
             title={subs.index >= 0 ? subs.label : t("player.subtitlesOff")}
           >
             <PlayerIcon name="captions" />
             <span>{subs.index >= 0 && captions.length > 1 ? subs.label : t("player.subtitles")}</span>
           </button>
-          <button className="player-button" type="button" onClick={toggleFullscreen} aria-label={fullscreenLabel} disabled={!duration || !!error}>
-            <PlayerIcon name={fullscreen ? "shrink" : "expand"} />
-            <span>{fullscreen ? t("player.exit") : t("player.fullscreen")}</span>
+          <button className="player-button" type="button" onClick={() => { sound.prepare(); sound.toggleMute(); }} aria-pressed={sound.muted}>
+            <PlayerIcon key={sound.muted ? "muted" : "volume"} name={sound.muted ? "muted" : "volume"} />
+            <span>{soundLabel}</span>
           </button>
-          <button ref={settingsButton} className="player-button" type="button" onClick={() => setPanel(current => current === "settings" ? null : "settings")} aria-expanded={settingsOpen} aria-pressed={settingsOpen} aria-label={t("player.settingsAria")} title={settingsOpen ? t("player.closeSettings") : t("player.settings")}>
-            <PlayerIcon name="settings" />
-            <span>{t("player.settings")}</span>
-          </button>
+          {sound.volumeWorks && (
+            // Opens a row with the volume slider, for this device only: handy when WhatsApp or Discord is open next to the film.
+            <button ref={volumeButton} className="player-button" type="button" onClick={() => { sound.prepare(); toggleVolume(); }} aria-expanded={volumeOpen} aria-controls="volume-row" title={t("player.volumeSlider")}>
+              <PlayerIcon name="levels" />
+              <span>{t("player.volume")}</span>
+            </button>
+          )}
         </div>
 
-        {volumeOpen && sound.volumeWorks && (
-          <div className="volume-row" id="volume-row">
+        {volumeView.shown && sound.volumeWorks && (
+          <div className="volume-row" id="volume-row" data-closing={volumeView.closing} inert={volumeView.closing}>
             <button className="volume-mute" type="button" onClick={() => { sound.prepare(); sound.toggleMute(); }} aria-label={soundLabel} aria-pressed={sound.muted}>
               <PlayerIcon name={sound.muted ? "muted" : "volume"} />
             </button>
             <input
-              className="volume-range" type="range" min={0} max={1} step={0.01} aria-label={t("player.volume")}
+              ref={volumeRange} className="volume-range" type="range" min={0} max={1} step={0.01} aria-label={t("player.volume")}
               value={sound.muted ? 0 : sound.volume}
               style={{ "--fill": `${percent}%` } as React.CSSProperties}
               aria-valuetext={t("player.percent", { n: percent })}
@@ -612,12 +667,15 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
               onChange={event => sound.setVolume(Number(event.target.value))}
             />
             <output htmlFor="volume-row" className="volume-percent">{percent}%</output>
+            <button className="volume-close" type="button" onClick={closePanels} aria-label={t("player.volumeClose")} title={t("player.volumeClose")}>
+              <PlayerIcon name="close" />
+            </button>
           </div>
         )}
 
         {error && (
           <div className="player-error">
-            <p role="alert">{error}</p>
+            <p role="alert">{t(error)}</p>
             <button className="player-button" type="button" onClick={() => { setError(undefined); setAttempt(value => value + 1); }}>
               {t("player.tryAgain")}
             </button>
@@ -636,13 +694,13 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
           </div>
         )}
         {fullscreenError && <p className="player-notice" role="status">{t("player.fullscreenUnavailable")}</p>}
-        {roomError && <p className="player-notice" role="alert">{roomError}</p>}
+        {roomError && <p className="player-notice" role="alert">{say(roomError)}</p>}
       </div>
 
-      {subsOpen && <SubtitlesPanel captions={captions} trackIndex={subs.index} onSelectTrack={subs.select} />}
-      {settingsOpen && (
+      {panelView.shown === "subtitles" && <SubtitlesPanel captions={captions} trackIndex={subs.index} onSelectTrack={subs.select} closing={panelView.closing} onClose={closePanels} />}
+      {panelView.shown === "settings" && (
         <PlayerSettings
-          tab={settingsTab} onTab={setSettingsTab}
+          closing={panelView.closing} tab={settingsTab} onTab={setSettingsTab} onClose={closePanels}
           media={media} levels={levels} activeLevel={activeLevel} quality={quality} onQuality={onQuality}
           muted={sound.muted} volume={sound.volume} volumeWorks={sound.volumeWorks} soft={sound.soft} onMute={sound.setMuted} onVolume={sound.setVolume}
         />

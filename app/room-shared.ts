@@ -121,7 +121,7 @@ export type RoomEvent =
   | { type: "chat"; message: RoomMessage }
   | { type: "reaction"; reaction: Reaction }
   /** The admin removed one person (that person is told and disconnected; everyone else ignores it). */
-  | { type: "kick"; memberId: string; left?: boolean }
+  | { type: "kick"; memberId: string; left?: boolean; last?: boolean }
   /** The admin closed the room: everybody in it is told and disconnected. */
   | { type: "closed" };
 

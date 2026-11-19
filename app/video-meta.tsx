@@ -1,29 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useI18n } from "./i18n";
+import { Failure, problemOf, useI18n, type Problem } from "./i18n";
 import type { MediaInfo, MediaMeta } from "./room-shared";
 
 type Lookup = { meta: MediaMeta | null; canLookUp?: boolean; model?: string };
 
 /** The looked-up details of a video. Fetched when first needed and again whenever the saved lookup changes. */
 export function useMediaMeta(roomId: string, media: Pick<MediaInfo, "id" | "metaVersion">) {
-  const { fail } = useI18n();
   const [lookup, setLookup] = useState<Lookup>();
-  const [error, setError] = useState("");
+  const [error, setError] = useState<Problem>();
 
   useEffect(() => {
     let current = true;
-    setError("");
+    setError(undefined);
     fetch(`/api/rooms/${roomId}/meta?mediaId=${encodeURIComponent(media.id)}`, { cache: "no-store" })
       .then(async response => {
         const payload = await response.json();
-        if (!response.ok) throw new Error(fail(payload, "meta.err.load"));
+        if (!response.ok) throw new Failure(payload, "meta.err.load");
         if (current) setLookup(payload as Lookup);
       })
-      .catch(reason => { if (current) setError(reason instanceof Error ? reason.message : fail(null, "meta.err.load")); });
+      .catch(reason => { if (current) setError(problemOf(reason, "meta.err.load")); });
     return () => { current = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, media.id, media.metaVersion]);
 
   return { ...lookup, error, loaded: !!lookup };
@@ -67,33 +65,36 @@ export function MetaView({ meta }: { meta: MediaMeta }) {
 }
 
 /** The host's button: search the web for this video's details. Optional hint text helps with odd file names. */
-export function FindDetails({ roomId, media, canLookUp, model, described }: {
+export function FindDetails({ roomId, media, canLookUp, model, described, admin }: {
   roomId: string; media: MediaInfo; canLookUp?: boolean; model?: string; described: boolean;
+  /** Whether this person is the signed-in admin: only the admin is told which server setting is missing. */
+  admin?: boolean;
 }) {
-  const { t, lang, fail } = useI18n();
+  const { t, lang, say } = useI18n();
   const [hint, setHint] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<Problem>();
 
   const run = useCallback(async () => {
     setBusy(true);
-    setError("");
+    setError(undefined);
     try {
       const response = await fetch(`/api/rooms/${roomId}/library/enrich`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mediaId: media.id, hint: hint.trim() || undefined, lang }),
       });
-      if (!response.ok) throw new Error(fail(await response.json().catch(() => null), "meta.err.lookup"));
+      if (!response.ok) throw new Failure(await response.json().catch(() => null), "meta.err.lookup");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("meta.err.lookup"));
+      setError(problemOf(reason, "meta.err.lookup"));
     } finally {
       setBusy(false);
     }
-  }, [roomId, media.id, hint, lang, fail, t]);
+  }, [roomId, media.id, hint, lang]);
 
   if (canLookUp === undefined) return null;
   if (!canLookUp) {
-    return <p className="details-note">{t("meta.notConfiguredBefore")}<code>METADATA_API_KEY</code>{t("meta.notConfiguredAfter")}</p>;
+    // The name of the server setting is for whoever runs the server; everybody else is just told it is not available.
+    return <p className="details-note">{admin ? <>{t("meta.notConfiguredBefore")}<code>METADATA_API_KEY</code>{t("meta.notConfiguredAfter")}</> : t("meta.notConfigured")}</p>;
   }
   return (
     <div className="find-details">
@@ -106,7 +107,7 @@ export function FindDetails({ roomId, media, canLookUp, model, described }: {
         {busy ? t("meta.searching") : described ? t("meta.lookupAgain") : t("meta.find")}
       </button>
       <p className="details-note">{t("meta.privacy", { model: model ?? t("meta.modelFallback") })}</p>
-      {error && <p className="room-error" role="alert">{error}</p>}
+      {error && <p className="room-error" role="alert">{say(error)}</p>}
     </div>
   );
 }

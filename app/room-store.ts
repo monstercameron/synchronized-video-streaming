@@ -229,7 +229,8 @@ export function sharedState(id: string): SharedRoomState {
   const pause = pausers.get(id);
   // Requests belong to the exact revision they were made at, so any play, pause, seek or new video clears them.
   const asking = [...(wants.get(id)?.entries() ?? [])]
-    .filter(([, request]) => !room.playing && request.revision === room.revision)
+    // Someone who has since left or been removed is not asking any more (there would be no name to show).
+    .filter(([asker, request]) => !room.playing && request.revision === room.revision && members.some(member => member.id === asker))
     .map(([asker, request]) => ({ id: asker, at: request.at }));
   const pausedBy = !room.playing && pause?.revision === room.revision ? members.find(member => member.id === pause.memberId)?.name : undefined;
   // Whoever reports waiting for data on the video that is showing now. The list is reused when it has not changed.
@@ -480,8 +481,10 @@ export function kickMember(roomId: string, memberId: string, byChoice = false) {
   const room = getRoom(roomId);
   const target = db.prepare("SELECT id FROM members WHERE id = ? AND room_id = ?").get(memberId, roomId);
   if (!target) throw new RoomError(404, "err.admin.noMember");
+  // Someone who chooses to leave a room they are alone in closes it; they are told so, to know the code no longer works.
+  const last = Number(db.prepare("SELECT COUNT(*) AS size FROM members WHERE room_id = ?").get(roomId)?.size) === 1;
   // Told first, while their connection still exists.
-  broadcast(roomId, { type: "kick", memberId, ...(byChoice ? { left: true } : {}) });
+  broadcast(roomId, { type: "kick", memberId, ...(byChoice ? { left: true, last } : {}) });
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("DELETE FROM messages WHERE author_id = ?").run(memberId);
@@ -496,6 +499,7 @@ export function kickMember(roomId: string, memberId: string, byChoice = false) {
     throw error;
   }
   forgetMember(memberId);
+  wants.get(roomId)?.delete(memberId);
   memberLists.delete(roomId);
   for (const key of memberByToken.keys()) if (key.startsWith(`${roomId}|`)) memberByToken.delete(key);
   forgetRoom(roomId);
@@ -503,6 +507,9 @@ export function kickMember(roomId: string, memberId: string, byChoice = false) {
   if (Number(left) === 0) closeRoom(roomId);
   else broadcast(roomId);
 }
+
+/** Whether a room with this id still exists (it closes when its last person leaves). */
+export const roomExists = (roomId: string) => !!database().prepare("SELECT 1 FROM rooms WHERE id = ?").get(roomId);
 
 /** Close a room: everybody in it is told and disconnected, and the room, its people and its chat are deleted. */
 export function closeRoom(roomId: string) {

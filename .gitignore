@@ -21,6 +21,7 @@ next-env.d.ts
 
 # Optional self-contained build used for the Bun experiments (see deploy/README.md)
 .next-standalone/
+.next-*/
 
 # Local tooling config
 .claude/

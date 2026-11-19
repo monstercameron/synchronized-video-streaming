@@ -52,7 +52,8 @@ moment, on whatever phone they have, including old ones on slow connections.
   across the picture for everybody.
 - In full screen (or a phone held sideways) incoming chat appears as **speech bubbles**; tap one to reply with the keyboard up.
 - Custom **room codes** that your friends can actually type, or random private links.
-- A **lock screen** and an **admin page**: the admin opens the site, sees every room, removes people and closes rooms.
+- A **lock screen** and an **admin page**: the admin opens the site, sees every room, removes people and closes rooms. Friends who arrive early see a waiting screen that lets them in by itself the moment the site opens.
+- **Leave room** for everyone (two taps); the next person becomes host, and a room closes when its last person leaves. An old link to a closed room offers to start it again or use another code, instead of a dead end.
 
 **Subtitles done properly**
 - Open the Subtitles panel to pick a track in one tap, then adjust **delay, how long lines stay, how many stack, size,
@@ -170,7 +171,7 @@ Settings are environment variables (see [`deploy/screening.env.example`](deploy/
 | `samples/` | A tiny generated demo video (adaptive, with subtitles) |
 | `docs/` | The GitHub Pages site (interactive demo and explainer) and README screenshots |
 
-Developer commands: `npm run typecheck`, `npm run i18n:check`, `npm run load:test`, `npm run media:prepare`, `npm run media:sample`.
+Developer commands: `npm run typecheck`, `npm run i18n:check`, `npm run load:test`, `npm run media:prepare`, `npm run media:sample`, and `npm run admin:check -- http://127.0.0.1:3200` (43 checks of the lock, the admin actions, leaving and removal, against a running server started with the same `ADMIN_PASSWORD`; use a throwaway database, it closes rooms).
 
 ## Languages
 
@@ -186,7 +187,7 @@ language files match. The Spanish was written without a native-speaker review.
   membership. A room that doesn't exist and a room you haven't joined look identical from outside.
 - At most 10 wrong room codes per minute per address; commands must come from the app's own origin; the session cookie is
   `HttpOnly`; a room holds at most 50 people; reactions are limited to 6 per 2 seconds per person.
-- **A lock screen and an admin password.** The site starts locked. The admin signs in on the lock screen with `ADMIN_PASSWORD`, which opens it for everyone else; the **Manage rooms** page (`/admin`) lists every room and who is in it, lets the admin remove a person or close a room, and lock the site again. Uploading and deleting videos (and the web lookup) need that sign-in as well as being the host. The password is checked in constant time, wrong guesses are limited per address, and the sign-in cookie is signed with a key made from the password, so changing it signs everybody out. The default password is `password`: change it before putting this on the internet.
+- **A lock screen and an admin password.** The site starts locked. The admin signs in on the lock screen with `ADMIN_PASSWORD`, which opens it for everyone (once open, anyone with a room code or link joins without a password: the admin is the gatekeeper, and locking again only stops new people) else; the **Manage rooms** page (`/admin`) lists every room and who is in it, lets the admin remove a person or close a room, and lock the site again. Uploading and deleting videos (and the web lookup) need that sign-in as well as being the host. The password is checked in constant time, wrong guesses are limited per address, and the sign-in cookie is signed with a key made from the password, so changing it signs everybody out. The default password is `password`: change it before putting this on the internet.
 - Choosing the video, and play and seek, stay with the room's host. Uploads stream to disk and respect the storage cap.
 - No analytics and no third-party scripts. The running app makes no outbound requests except the optional **Find details**
   lookup, and it sends the video's file name, title, length and picture size (plus any hint the host types) when the host taps the button. (Next.js's own build tooling sends anonymous telemetry unless you set `NEXT_TELEMETRY_DISABLED=1`; the Docker image sets it.)
@@ -197,7 +198,8 @@ language files match. The Spanish was written without a native-speaker review.
 
 - Tested in a browser emulator at phone and tablet sizes and under simulated network trouble, **not on a range of real
   phones**. Fullscreen rotation, the on-screen keyboard and Safari's built-in HLS player are the least-verified parts.
-- The deploy files and the Docker image have **never been run on a real droplet**, and the image has not been built locally. Treat the first deploy as a dry run.
+- Two desktop browsers in one room stay within about 10 ms of each other on one machine (play, pause, seek, Pause me and Rejoin are checked that way); sync between real phones on real networks has not been measured.
+- The Docker image is built by GitHub Actions and the **shared-droplet setup** in [deploy/DOCKER.md](deploy/DOCKER.md) runs on one real droplet. The standalone compose file (with its own Nginx, HTTP/3) and the non-Docker systemd files have **not** been run on a real server: treat a first deploy with those as a dry run.
 - Performance figures come from one laptop; see the caveats in [Performance notes](#performance-notes).
 - Released under the [MIT License](LICENSE). The sample video in `samples/` is generated for this project.
 
