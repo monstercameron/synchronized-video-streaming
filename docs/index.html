@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="meta.title">Screening room: watch together, in step</title>
+<meta name="description" content="A private place to watch a video together, built for phones: everyone's picture stays in step. Interactive demo and explainer.">
+<meta name="theme-color" content="#0f1217">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23171c24'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='%23ffcf83'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="nav.skip">Skip to the content</a>
+
+<header class="nav">
+  <div class="wrap nav-row">
+    <a class="brand" href="#top"><span class="mark" aria-hidden="true"></span><span>Screening room</span></a>
+    <nav aria-label="Sections" data-i18n-attr="aria-label:nav.label">
+      <a href="#demo" data-i18n="nav.demo">Demo</a>
+      <a href="#how" data-i18n="nav.how">How it works</a>
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#performance" data-i18n="nav.performance">Performance</a>
+      <a href="#run" data-i18n="nav.run">Run it</a>
+    </nav>
+    <div class="lang" role="group" aria-label="Language" data-i18n-attr="aria-label:lang.label">
+      <button type="button" aria-pressed="true" data-lang="en" lang="en">English</button>
+      <button type="button" aria-pressed="false" data-lang="es" lang="es">Español</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow" data-i18n="hero.eyebrow">Open source · self-hosted · private rooms</p>
+      <h1 data-i18n="hero.title">Watch together, in step.</h1>
+      <p class="lead" data-i18n="hero.lead">A private place to watch a video together, built for phones: everyone's picture stays in step.</p>
+      <div class="cta">
+        <a class="btn primary" href="#demo" data-i18n="hero.demo">Try the demo</a>
+        <a class="btn" href="https://github.com/monstercameron/synchronized-video-streaming" data-i18n="hero.github">View on GitHub</a>
+      </div>
+      <ul class="chips" aria-label="Built with" data-i18n-attr="aria-label:hero.builtLabel">
+        <li>Next.js 16</li><li>Server-Sent Events</li><li>HLS &amp; MP4</li><li>SQLite</li><li data-i18n="hero.chipLang">English &amp; Español</li>
+      </ul>
+    </div>
+    <svg class="hero-art" viewBox="0 0 420 300" role="img" aria-labelledby="art-title">
+      <title id="art-title" data-i18n="hero.art">Three phones showing the same moment of a video, all at 01:23.4</title>
+      <g fill="none" stroke="#2e3745" stroke-width="2">
+        <rect x="12" y="40" width="120" height="220" rx="16" fill="#171c24"/>
+        <rect x="150" y="20" width="120" height="240" rx="16" fill="#171c24"/>
+        <rect x="288" y="40" width="120" height="220" rx="16" fill="#171c24"/>
+      </g>
+      <g>
+        <rect x="22" y="62" width="100" height="58" rx="6" fill="#1b2a44"/><rect x="160" y="42" width="100" height="58" rx="6" fill="#1b2a44"/><rect x="298" y="62" width="100" height="58" rx="6" fill="#1b2a44"/>
+      </g>
+      <g font-family="ui-monospace,Consolas,monospace" font-size="13" font-weight="700" fill="#f7f5ef" text-anchor="middle">
+        <text x="72" y="96">01:23.4</text><text x="210" y="76">01:23.4</text><text x="348" y="96">01:23.4</text>
+      </g>
+      <g fill="#ffcf83"><rect x="22" y="132" width="42" height="14" rx="7"/><rect x="160" y="112" width="42" height="14" rx="7"/><rect x="298" y="132" width="42" height="14" rx="7"/></g>
+      <g fill="#222935"><rect x="22" y="156" width="100" height="10" rx="5"/><rect x="22" y="174" width="74" height="10" rx="5"/><rect x="160" y="136" width="100" height="10" rx="5"/><rect x="160" y="154" width="64" height="10" rx="5"/><rect x="298" y="156" width="100" height="10" rx="5"/><rect x="298" y="174" width="84" height="10" rx="5"/></g>
+      <path d="M72 262v18M210 262v18M348 262v18M72 280h276" stroke="#ffcf83" stroke-width="2" fill="none" stroke-dasharray="4 4"/>
+      <circle cx="210" cy="280" r="6" fill="#8fe0bf"/>
+    </svg>
+  </div>
+</section>
+
+<section class="demo" id="demo" aria-labelledby="demo-h">
+  <div class="wrap">
+    <h2 id="demo-h" data-i18n="demo.h">Interactive demo</h2>
+    <p class="sub" data-i18n="demo.intro">One simulated room, three phones, and the screens around them: choosing a language, joining with a room code, playing in step, buffering, full screen, quality, and the host's library. Everything runs in your browser: no server, no video, nothing is sent anywhere.</p>
+
+    <div class="tourbar">
+      <button type="button" class="btn primary" id="tour-start" data-i18n="tour.start">Start the guided tour</button>
+      <p class="small" data-i18n="tour.lead">A step-by-step walk through the whole app. You can skip it, and it works with the keyboard.</p>
+    </div>
+
+    <div class="try">
+      <h3 data-i18n="demo.tryH">Or try things yourself</h3>
+      <ol>
+        <li data-i18n="demo.try1">Choose a language, then start a room on the Host's phone with a code such as <b>movie-night</b>. On Ann's and Bob's phones try a wrong code first, then the right one.</li>
+        <li data-i18n="demo.try2">Press <b>Play all</b> on the Host's phone: all three start together, 550 ms after the press. Anyone can pause; press <b>Waiting</b> on a viewer and the host gets <b>Play now</b>.</li>
+        <li data-i18n="demo.try3">Drag the Host's seek bar (the viewers' bars are locked). Press <b>Pause me</b> on Bob, then <b>Rejoin</b>.</li>
+        <li data-i18n="demo.try4">Under <b>Network trouble</b> make Ann's connection <b>Slow</b>, then <b>Offline</b>, then <b>Normal</b>, and watch the others.</li>
+        <li data-i18n="demo.try5">Open <b>Subtitles</b>, <b>Volume</b> and <b>Quality</b> on any phone. In Quality, turn on <b>Low-end phone</b> while the room plays and watch Data saver switch itself on.</li>
+        <li data-i18n="demo.try6">Press <b>Full screen</b> on a phone: the controls fade after 5 seconds, and <b>A friend writes</b> shows chat as bubbles. <b>Keyboard</b> shows the typing layout.</li>
+        <li data-i18n="demo.try7">Scroll to <b>Host tools</b>: upload a file, hit the 4 GB cap, delete a video, add a subtitle file.</li>
+      </ol>
+    </div>
+
+    <p class="note" data-i18n="demo.note"><b>What is simulated.</b> The room, the clocks, latencies, drift, connection speed, buffer length, the weak phone and the keyboard are all made up in your browser; the rules they follow are taken from the app's source. The real sample video is 12 seconds long with an English subtitle track only: this demo's 5-minute timeline and its Spanish track are demo extras. It has not been checked on real phones, and the Spanish text, here and in the app, was written without a native-speaker review.</p>
+
+    <div id="demo-stage" data-stage="lang">
+      <div class="gate" id="gate">
+        <div class="gate-card">
+          <h3 class="lang-title" id="gate-h"><span lang="en">Choose your language</span><span lang="es">Elige tu idioma</span></h3>
+          <div class="lang-options">
+            <button type="button" data-pick="en" lang="en">English</button>
+            <button type="button" data-pick="es" lang="es">Español</button>
+          </div>
+          <p class="lang-note"><span lang="en">You can change this later.</span> · <span lang="es">Puedes cambiarlo después.</span></p>
+          <p class="small" data-i18n="gate.note">This is the first screen of the real app, shown only on a first visit. Here it appears every time, so you can see it. The buttons in the page header change the language too.</p>
+        </div>
+      </div>
+
+      <div class="board" id="board" aria-live="off">
+        <div class="board-top">
+          <div class="clock"><span class="k" data-i18n="board.room">Room clock</span><b id="b-clock">00:00.0</b><span id="b-state" class="state"></span></div>
+          <div class="board-btns">
+            <button type="button" class="btn small" id="b-skip" data-i18n="d.skipJoin" hidden>Skip: everyone joins now</button>
+            <button type="button" class="btn small" id="b-reset" data-i18n="board.reset">Reset demo</button>
+          </div>
+        </div>
+        <div class="roomcode" id="b-code" hidden><span class="k" data-i18n="people.roomCode">Room code</span><code id="b-code-val"></code><button type="button" class="btn small" id="b-copy" data-i18n="people.copyCode">Copy code</button></div>
+        <div class="drifts" id="b-drifts"></div>
+        <p class="legend" data-i18n="board.legend">Drift is how far each phone is from the room, in milliseconds. Over 180 ms a phone nudges its speed; over 550 ms it jumps. Each simulated phone has its own slightly different clock, which is why the numbers move.</p>
+        <div class="net">
+          <h3 data-i18n="d.netH">Network trouble</h3>
+          <div class="netrow"><span class="k" id="net-for" data-i18n="d.netFor">Ann's connection</span>
+            <div class="seg" id="b-net" role="radiogroup" aria-labelledby="net-for">
+              <button type="button" role="radio" aria-checked="true" data-net="ok" data-i18n="d.netOk">Normal</button>
+              <button type="button" role="radio" aria-checked="false" data-net="slow" data-i18n="d.netSlow">Slow</button>
+              <button type="button" role="radio" aria-checked="false" data-net="offline" data-i18n="d.netOff">Offline</button>
+            </div>
+          </div>
+          <p class="small" data-i18n="d.netNote">Slow is about 1 Mb/s.</p>
+        </div>
+        <details class="events" open>
+          <summary data-i18n="board.eventsH">What the server did</summary>
+          <ol id="b-log" aria-live="polite"></ol>
+        </details>
+      </div>
+
+      <div class="phone-tabs" id="phone-tabs" role="tablist" aria-label="Phone" data-i18n-attr="aria-label:d.phoneTabs"></div>
+      <div class="phones" id="phones">
+        <noscript><p data-i18n="demo.noscript">The interactive demo needs JavaScript.</p></noscript>
+      </div>
+
+      <section class="hosttools" id="host-tools" aria-labelledby="ht-h" hidden></section>
+    </div>
+
+    <div class="tour" id="tour" role="dialog" aria-modal="false" aria-labelledby="tour-title" hidden>
+      <div class="tour-head"><span class="tag host" id="tour-count"></span><h3 id="tour-title" tabindex="-1"></h3><button type="button" class="btn small" id="tour-min" aria-expanded="true" aria-controls="tour-body" data-i18n="tour.hide">Text</button><button type="button" class="btn small" id="tour-skip" data-i18n="tour.skip">Skip tour</button></div>
+      <div id="tour-body" aria-live="polite"><p id="tour-text"></p><p id="tour-done" class="ok"></p></div>
+      <div class="tour-actions">
+        <button type="button" class="btn small" id="tour-back" data-i18n="tour.back">Back</button>
+        <button type="button" class="btn small" id="tour-do" data-i18n="tour.do">Show me</button>
+        <button type="button" class="btn small primary" id="tour-next" data-i18n="tour.next">Next</button>
+      </div>
+      <p class="small keys" data-i18n="tour.keys">Keyboard: ← and → move between steps, Esc skips the tour.</p>
+    </div>
+  </div>
+</section>
+
+<section class="how" id="how" aria-labelledby="how-h">
+  <div class="wrap">
+    <h2 id="how-h" data-i18n="how.h">How it works</h2>
+    <p class="sub" data-i18n="how.intro">A small server keeps one shared state per room and tells every phone what changed. Each phone plays the video itself and keeps its own clock honest.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 760 330" role="img" aria-labelledby="dg-title dg-desc">
+        <title id="dg-title" data-i18n="how.dgTitle">Architecture: phones, the app server, and Nginx</title>
+        <desc id="dg-desc" data-i18n="how.dgDesc">Phones receive live room updates from the app over Server-Sent Events and send small commands as POST requests. Video files come to the phones from Nginx, after the app has checked who may watch.</desc>
+        <defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#ffcf83"/></marker><marker id="ag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8fe0bf"/></marker></defs>
+        <g stroke="#2e3745" stroke-width="2" fill="#171c24">
+          <rect x="16" y="30" width="120" height="264" rx="14"/>
+          <rect x="300" y="40" width="170" height="130" rx="14"/><rect x="590" y="215" width="150" height="80" rx="14"/>
+        </g>
+        <g stroke="#2e3745" stroke-width="2" fill="#222935"><rect x="30" y="48" width="92" height="64" rx="10"/><rect x="30" y="130" width="92" height="64" rx="10"/><rect x="30" y="212" width="92" height="64" rx="10"/></g>
+        <g font-family="system-ui,sans-serif" font-size="14" fill="#f7f5ef" text-anchor="middle" font-weight="700">
+          <text x="76" y="86">Host</text><text x="76" y="168">Ann</text><text x="76" y="250">Bob</text>
+          <text x="385" y="76" data-i18n="how.dgServer">App server</text><text x="665" y="252">Nginx</text>
+        </g>
+        <g font-family="system-ui,sans-serif" font-size="12" fill="#aab2bd" text-anchor="middle">
+          <text x="385" y="104" data-i18n="how.dgState">one shared state per room</text>
+          <text x="385" y="124" data-i18n="how.dgOnce">worked out once per change</text>
+          <text x="385" y="144">SQLite</text>
+          <text x="665" y="274" data-i18n="how.dgFiles">MP4 / HLS files</text>
+        </g>
+        <path d="M136 68H298" stroke="#ffcf83" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+        <path d="M300 130H138" stroke="#ffcf83" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+        <path d="M590 230L472 168" stroke="#8fe0bf" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#ag)"/>
+        <path d="M590 262H138" stroke="#8fe0bf" stroke-width="2" fill="none" marker-end="url(#ag)"/>
+        <g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">
+          <text x="218" y="60" fill="#ffcf83" data-i18n="how.dgPost">tiny commands (POST)</text>
+          <text x="218" y="122" fill="#ffcf83" data-i18n="how.dgSse">live updates (SSE)</text>
+          <text x="364" y="254" fill="#8fe0bf" data-i18n="how.dgBytes">video bytes</text>
+        </g>
+        <text x="600" y="190" font-family="system-ui,sans-serif" font-size="12" fill="#8fe0bf" text-anchor="start" data-i18n="how.dgAuth">"may they watch?"</text>
+      </svg>
+    </figure>
+
+    <div class="cards two">
+      <article class="card"><h3 data-i18n="how.c1h">Live updates over SSE</h3><p data-i18n="how.c1">Every viewer keeps one open Server-Sent Events stream. Commands (play, pause, chat, react) are tiny POST requests. No WebSocket: a stream shares one connection with the page and the video, and the browser reconnects by itself.</p></article>
+      <article class="card"><h3 data-i18n="how.c2h">The server does the work once</h3><p data-i18n="how.c2">A play, pause or new member is worked out once per change and handed to everyone. After the first message, a viewer is sent only what changed, not the whole room again.</p></article>
+      <article class="card"><h3 data-i18n="how.c3h">Video bytes skip the app</h3><p data-i18n="how.c3">The app checks that you are in the room and that this is the room's video, then Nginx sends the file: an MP4 with range requests, or HLS segments. The app never carries the video itself.</p></article>
+      <article class="card"><h3 data-i18n="how.c4h">A device that wakes up late</h3><p data-i18n="how.c4">A phone that reconnects asks for the room's position, opens the video there, and learns how long a seek takes on that device so the next jump lands in the right place.</p></article>
+    </div>
+
+    <h3 class="clockh" data-i18n="how.clockH">One shared clock</h3>
+    <ol class="steps">
+      <li data-i18n="how.s1"><b>Play is scheduled 550 ms ahead.</b> The server stamps the start moment slightly in the future, so every phone has time to hear about it and start together.</li>
+      <li data-i18n="how.s2"><b>Each phone measures its clock against the server's</b> when it connects and again every minute, and trusts the quickest answer.</li>
+      <li data-i18n="how.s3"><b>Small drift: change speed.</b> More than 0.18 s off, the phone plays at 0.94× or 1.06× until it is back in step.</li>
+      <li data-i18n="how.s4"><b>Big drift: jump.</b> More than 0.55 s off, the phone seeks. It aims a little ahead, by the seek time it learned on this device.</li>
+      <li data-i18n="how.s5"><b>Anyone can pause; only the host can play or seek.</b> One person's tap cannot restart or shove the timeline for everyone.</li>
+    </ol>
+  </div>
+</section>
+
+<section class="features" id="features" aria-labelledby="feat-h">
+  <div class="wrap">
+    <h2 id="feat-h" data-i18n="feat.h">What is in it</h2>
+    <div class="cards three">
+      <article class="card"><h3 data-i18n="feat.1h">Made for phones</h3><p data-i18n="feat.1">Mobile-first layout, large tap targets, a button row that scrolls sideways, and a layout that keeps working when the on-screen keyboard is up.</p></article>
+      <article class="card"><h3 data-i18n="feat.2h">Full screen that rotates</h3><p data-i18n="feat.2">Full screen turns the phone sideways where the browser allows it, and other people's chat appears as speech bubbles you can tap to reply. (iPhones cannot be forced to rotate.)</p></article>
+      <article class="card"><h3 data-i18n="feat.3h">Subtitles with live settings</h3><p data-i18n="feat.3">A subtitles panel opens under the buttons: pick a track, then change delay, size, position, colours and outline while you watch. Each viewer has their own style.</p></article>
+      <article class="card"><h3 data-i18n="feat.4h">Quality per person</h3><p data-i18n="feat.4">Adaptive (HLS) videos let each person choose Auto, Data saver, or a fixed quality. Single files have one quality.</p></article>
+      <article class="card"><h3 data-i18n="feat.5h">Volume on your device</h3><p data-i18n="feat.5">A volume row for this device only, handy with WhatsApp or Discord open beside the film. Phones that lock the video's volume get a software volume instead.</p></article>
+      <article class="card"><h3 data-i18n="feat.6h">Buffering that explains itself</h3><p data-i18n="feat.6">A spinner says "Jumping…" or "Buffering…", dropped connections are retried, and after 3 seconds the room is told: "Ann is buffering…". Nothing pauses the room.</p></article>
+      <article class="card"><h3 data-i18n="feat.7h">Uploads with a 4 GB cap</h3><p data-i18n="feat.7">The host can upload videos. The media folder is capped at 4 GB in total by default (a setting), with a usage bar and a Delete button to make room.</p></article>
+      <article class="card"><h3 data-i18n="feat.8h">English and Español</h3><p data-i18n="feat.8">Asked on the first visit and changeable any time. All the text is translated, including messages from the server.</p></article>
+      <article class="card"><h3 data-i18n="feat.9h">Easy on weak phones</h3><p data-i18n="feat.9">The page watches for moments when it is slow to respond and switches itself to a lighter mode, and an adaptive video that drops frames moves to Data saver.</p></article>
+      <article class="card"><h3 data-i18n="feat.10h">Video details from the web</h3><p data-i18n="feat.10">Optional. The host taps Find details and a web-searching model you configure fills in the title, synopsis and cast. It sends the file name, title, length and picture size (plus any hint the host types), and only when the host taps the button.</p></article>
+      <article class="card"><h3 data-i18n="feat.11h">Private rooms</h3><p data-i18n="feat.11">Start a room with a code you choose (4 to 20 letters, numbers, dashes or underscores) or a random one. Wrong guesses are rate-limited.</p></article>
+      <article class="card"><h3 data-i18n="feat.12h">Chat and reactions</h3><p data-i18n="feat.12">@-mentions that highlight for the person named, @everyone, and emoji that scroll across the picture for everyone.</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="perf" id="performance" aria-labelledby="perf-h">
+  <div class="wrap">
+    <h2 id="perf-h" data-i18n="perf.h">Performance</h2>
+    <p class="note" data-i18n="perf.caveat"><b>These are measurements, not promises.</b> They were taken on one Windows 11 ARM64 laptop with the load generator running on the same machine, so absolute numbers on a server will differ and the CPU figures carry about ±0.5 s of run-to-run noise. Compare the numbers to each other, not to a server.</p>
+
+    <h3 data-i18n="perf.loadH">The load test</h3>
+    <p data-i18n="perf.load">5 rooms × 20 viewers = 100 live connections for 25 seconds. The hosts play and pause every second, viewers chat about once a second and react about five times a second per room, and about 30 video range requests a second are made: roughly 17,000 events delivered, 840 commands and 690 media requests, far busier than a real watch party.</p>
+
+    <div class="table-wrap" tabindex="0" role="region" aria-labelledby="t1-cap">
+      <table>
+        <caption id="t1-cap" data-i18n="perf.t1cap">Server CPU and memory under the load test</caption>
+        <thead><tr><th scope="col" data-i18n="perf.t1a">Version</th><th scope="col" data-i18n="perf.t1b">CPU seconds (25 s run)</th><th scope="col" data-i18n="perf.t1c">Peak memory</th></tr></thead>
+        <tbody>
+          <tr><th scope="row" data-i18n="perf.r1">Before this work</th><td>6.61</td><td>186 MB</td></tr>
+          <tr><th scope="row" data-i18n="perf.r2">After the code changes</th><td>5.61</td><td>187 MB</td></tr>
+          <tr><th scope="row">+ <code>--max-old-space-size=160 --max-semi-space-size=2</code></th><td data-i18n="perf.r3b">5.86 (a second run: 6.92)</td><td data-i18n="perf.r3c">117 MB (a second run: 109 MB)</td></tr>
+          <tr><th scope="row">+ <code>--max-semi-space-size=1</code></th><td>6.23</td><td>114 MB</td></tr>
+          <tr><th scope="row">+ <code>--max-old-space-size=128 --max-semi-space-size=1</code></th><td>6.31</td><td>114 MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p data-i18n="perf.read1"><b>Reading it:</b> the code changes took about 15% off the CPU (a bit more than the noise). The memory flags took about 38% off the peak for roughly 5 to 10% more CPU, because a small young generation makes the garbage collector run more often. A CPU profile showed the app's own code at only 1.3% of the busy time; the rest is Next.js's per-request machinery and socket writes.</p>
+
+    <h3 data-i18n="perf.bunH">Bun: runtime, compile and bytecode</h3>
+    <p data-i18n="perf.bun">Bun 1.4.4 (native Windows ARM64) was tried against the same standalone build under Node 26. As a runtime it works with trade-offs:</p>
+    <div class="table-wrap" tabindex="0" role="region" aria-labelledby="t2-cap">
+      <table>
+        <caption id="t2-cap" data-i18n="perf.t2cap">Node 26 compared with Bun 1.4.4</caption>
+        <thead><tr><th scope="col"><span class="sr" data-i18n="perf.t2a">Measure</span></th><th scope="col">Node 26</th><th scope="col">Bun 1.4.4</th></tr></thead>
+        <tbody>
+          <tr><th scope="row" data-i18n="perf.b1">Time until the port accepts connections (median of 5 starts)</th><td>296 ms</td><td>202 ms</td></tr>
+          <tr><th scope="row" data-i18n="perf.b2">Time until the home page is served (median of 5)</th><td>474 ms</td><td>403 ms</td></tr>
+          <tr><th scope="row" data-i18n="perf.b3">CPU seconds in the 25 s load test (two runs)</th><td data-i18n="perf.b3a">5.81 and 6.25</td><td data-i18n="perf.b3b">6.58 and 6.14</td></tr>
+          <tr><th scope="row" data-i18n="perf.b4">Peak memory in the load test (two runs)</th><td data-i18n="perf.b4a">183 and 167 MB</td><td data-i18n="perf.b4b">140 and 134 MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p data-i18n="perf.read2"><b>Reading it:</b> Bun starts about 30% faster and uses about 20% less memory out of the box, with CPU that is the same within the noise. But plain Node with the memory flags above reaches 109 to 117 MB, below Bun's 134 to 140 MB, so the memory advantage disappears once Node is tuned. Uploads, <code>ffprobe</code> spawning and long connection drops were not exercised under Bun.</p>
+    <p class="warn" data-i18n="perf.compile"><b><code>bun build --compile</code> could not be made to work.</b> Bundling Next.js failed on files its standalone output leaves out and on <code>react-dom/server</code>; the one variant that compiles (95.6 MB, 95.9 MB with <code>--bytecode</code>) cannot find <code>next</code> at start-up. So there is no compiled build and no benchmark of one. <b>Recommendation: stay on Node 24+.</b></p>
+  </div>
+</section>
+
+<section class="run" id="run" aria-labelledby="run-h">
+  <div class="wrap">
+    <h2 id="run-h" data-i18n="run.h">Run it yourself</h2>
+    <p class="sub" data-i18n="run.intro">Needs <b>Node 24 or newer</b>. Then open the address from any phone on the same network.</p>
+    <pre tabindex="0"><code>npm install
+npm run build &amp;&amp; npm run start -- --hostname 0.0.0.0 --port 3000
+# then open http://&lt;this computer&gt;:3000</code></pre>
+    <ul class="links">
+      <li><a href="https://github.com/monstercameron/synchronized-video-streaming/blob/main/deploy/README.md" data-i18n="run.deploy">Putting it on a server: Nginx, HTTPS, systemd, limits and disk quota</a></li>
+      <li><a href="https://github.com/monstercameron/synchronized-video-streaming#readme" data-i18n="run.readme">The README: scripts, load test and performance notes</a></li>
+      <li><code>npm run media:prepare -- &lt;file&gt;</code> <span data-i18n="run.prep">makes a video browser-ready (MP4, or an adaptive HLS ladder with <code>--hls</code>).</span></li>
+      <li><code>npm run load:test</code> <span data-i18n="run.load">re-runs the load test above against a test server.</span></li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p><a href="https://github.com/monstercameron/synchronized-video-streaming">github.com/monstercameron/synchronized-video-streaming</a></p>
+    <p data-i18n="foot.note">This page is a demo with simulated data. It has no video content, no tracking, no cookies and makes no requests to other sites; it remembers only your language choice, in your browser. The Spanish text was written without a native-speaker review.</p>
+  </div>
+</footer>
+
+<script src="i18n.js"></script>
+<script src="demo.js"></script>
+<script src="demo-host.js"></script>
+<script src="tour.js"></script>
+</body>
+</html>
