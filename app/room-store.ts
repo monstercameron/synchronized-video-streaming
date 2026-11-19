@@ -428,3 +428,108 @@ if (!runtime.screeningSweeper) {
   runtime.screeningSweeper = setInterval(sweep, sweepEvery);
   runtime.screeningSweeper.unref();
 }
+
+// ---------- Admin: seeing rooms, removing people, closing rooms ----------
+
+/** Whether this session token already belongs to a member of the room (without saying anything about why not). */
+export function isMemberOf(id: string, token?: string) {
+  try {
+    requireMembership(id, token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export type AdminRoom = {
+  id: string; custom: boolean; hostId: string; video: string | null; playing: boolean;
+  members: { id: string; name: string; host: boolean; online: boolean }[];
+};
+
+/** Every room, with who is in it and who is connected right now, for the management page. */
+export function listRooms(): AdminRoom[] {
+  const db = database();
+  const rows = db.prepare("SELECT id FROM rooms ORDER BY rowid DESC LIMIT 200").all() as { id: string }[];
+  return rows.map(({ id }) => {
+    const room = getRoom(id);
+    const media = getMedia(room.mediaId);
+    return {
+      id, custom: !/^[A-Za-z0-9_-]{22}$/.test(id), hostId: room.hostId, video: media ? toInfo(media).title : null, playing: !!room.playing,
+      members: memberList(id).map(member => ({ id: member.id, name: member.name, host: member.id === room.hostId, online: online.has(member.id) })),
+    };
+  });
+}
+
+function forgetMember(memberId: string) {
+  health.delete(memberId);
+  buffering.delete(memberId);
+  online.delete(memberId);
+  offlineSince.delete(memberId);
+  reactionRate.delete(memberId);
+}
+
+/**
+ * Remove one person from a room. They are told, disconnected, and need to join again (their chat lines go with them). If the
+ * host is removed the next person to have joined becomes the host; if nobody is left the room is closed.
+ */
+export function kickMember(roomId: string, memberId: string) {
+  const db = database();
+  const room = getRoom(roomId);
+  const target = db.prepare("SELECT id FROM members WHERE id = ? AND room_id = ?").get(memberId, roomId);
+  if (!target) throw new RoomError(404, "err.admin.noMember");
+  // Told first, while their connection still exists.
+  broadcast(roomId, { type: "kick", memberId });
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM messages WHERE author_id = ?").run(memberId);
+    db.prepare("DELETE FROM members WHERE id = ?").run(memberId);
+    if (room.hostId === memberId) {
+      const next = db.prepare("SELECT id FROM members WHERE room_id = ? ORDER BY rowid LIMIT 1").get(roomId) as { id: string } | undefined;
+      if (next) db.prepare("UPDATE rooms SET host_id = ?, revision = revision + 1 WHERE id = ?").run(next.id, roomId);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  forgetMember(memberId);
+  memberLists.delete(roomId);
+  for (const key of memberByToken.keys()) if (key.startsWith(`${roomId}|`)) memberByToken.delete(key);
+  forgetRoom(roomId);
+  const left = db.prepare("SELECT COUNT(*) AS size FROM members WHERE room_id = ?").get(roomId)?.size;
+  if (Number(left) === 0) closeRoom(roomId);
+  else broadcast(roomId);
+}
+
+/** Close a room: everybody in it is told and disconnected, and the room, its people and its chat are deleted. */
+export function closeRoom(roomId: string) {
+  const db = database();
+  if (!db.prepare("SELECT 1 FROM rooms WHERE id = ?").get(roomId)) throw new RoomError(404, "err.admin.noRoom");
+  broadcast(roomId, { type: "closed" });
+  const people = db.prepare("SELECT id FROM members WHERE room_id = ?").all(roomId) as { id: string }[];
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM messages WHERE room_id = ?").run(roomId);
+    db.prepare("DELETE FROM members WHERE room_id = ?").run(roomId);
+    db.prepare("DELETE FROM rooms WHERE id = ?").run(roomId);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  for (const { id } of people) forgetMember(id);
+  memberLists.delete(roomId);
+  for (const key of memberByToken.keys()) if (key.startsWith(`${roomId}|`)) memberByToken.delete(key);
+  forgetRoom(roomId);
+  lastShared.delete(roomId);
+  wants.delete(roomId);
+  pausers.delete(roomId);
+  listeners.delete(roomId);
+}
+
+/** Close every room. Returns how many there were. */
+export function closeAllRooms() {
+  const ids = (database().prepare("SELECT id FROM rooms").all() as { id: string }[]).map(row => row.id);
+  for (const id of ids) closeRoom(id);
+  return ids.length;
+}

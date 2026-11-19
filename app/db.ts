@@ -56,6 +56,7 @@ export function database() {
         compat TEXT NOT NULL, note TEXT NOT NULL, faststart INTEGER NOT NULL,
         sig TEXT NOT NULL, captions TEXT NOT NULL, poster TEXT
       );
+      CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS media_meta (
         media_id TEXT PRIMARY KEY, data TEXT NOT NULL, fetched_at INTEGER NOT NULL, model TEXT NOT NULL
       );

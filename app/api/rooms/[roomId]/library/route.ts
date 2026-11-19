@@ -5,6 +5,7 @@ import { getMedia, listMedia, toLibraryItem } from "../../../../media-catalog";
 import { imageExtensions, mediaRoot, scanLibrary, scannedAgo, subtitleExtensions, videoExtensions } from "../../../../media-library";
 import { clearMeta } from "../../../../media-meta";
 import { storage, usageChanged } from "../../../../media-quota";
+import { assertAdmin, isAdmin } from "../../../../admin-auth";
 import { assertSameOrigin, getSession, noStore, roomResponse } from "../../../../room-http";
 import { requireMembership, RoomError } from "../../../../room-store";
 
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const force = request.nextUrl.searchParams.has("rescan");
     const scan = force || scannedAgo() > 15000 ? await scanLibrary() : undefined;
     return Response.json({
+      admin: isAdmin(request),
       items: listMedia().map(toLibraryItem),
       errors: scan?.errors ?? [],
       maxUploadBytes: Number(process.env.MAX_UPLOAD_GB ?? 20) * 1024 ** 3,
@@ -42,6 +44,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { roomId } = await params;
     const { room, you } = requireMembership(roomId, getSession(request));
     if (you.id !== room.hostId) throw new RoomError(403, "err.host.delete");
+    assertAdmin(request);
     const media = getMedia(request.nextUrl.searchParams.get("mediaId"));
     if (!media) throw new RoomError(404, "err.media.notInLibrary");
     if (room.mediaId === media.id) throw new RoomError(409, "err.delete.playing");

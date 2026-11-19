@@ -119,7 +119,11 @@ export type RoomState = Omit<RoomSnapshot, "messages">;
 export type RoomEvent =
   | { type: "state"; shared?: SharedRoomState }
   | { type: "chat"; message: RoomMessage }
-  | { type: "reaction"; reaction: Reaction };
+  | { type: "reaction"; reaction: Reaction }
+  /** The admin removed one person (that person is told and disconnected; everyone else ignores it). */
+  | { type: "kick"; memberId: string }
+  /** The admin closed the room: everybody in it is told and disconnected. */
+  | { type: "closed" };
 
 /**
  * The part of a room's state that is the same for everyone in it (server side). Worked out once per change and handed to every

@@ -43,7 +43,7 @@ points at the droplet:
 ```bash
 git clone https://github.com/monstercameron/synchronized-video-streaming.git /opt/screening
 cd /opt/screening
-cp deploy/docker/env.example .env      # then edit it: DOMAIN=..., and optionally the quota and upload limit
+cp deploy/docker/env.example .env      # then edit it: ADMIN_PASSWORD, DOMAIN, and optionally the quota and upload limit
 sudo mkdir -p /srv/screening/media /var/www/certbot
 sudo chown -R 1000:1000 /srv/screening  # the app runs as uid 1000 inside the container
 docker compose up -d
@@ -109,7 +109,7 @@ sudo chown -R 1000:1000 /srv/screening
 RAW=https://raw.githubusercontent.com/monstercameron/synchronized-video-streaming/main
 sudo curl -fsSLO $RAW/compose.shared-host.yaml
 sudo curl -fsSL $RAW/deploy/docker/env.example -o .env
-sudo nano .env       # IMAGE=ghcr.io/monstercameron/synchronized-video-streaming:latest-bun, DATA_DIR, MEDIA_QUOTA_GB
+sudo nano .env       # ADMIN_PASSWORD (a long random one!), IMAGE, DATA_DIR, MEDIA_QUOTA_GB
 sudo docker compose -f compose.shared-host.yaml pull
 sudo docker compose -f compose.shared-host.yaml up -d      # the app listens on 127.0.0.1:8110 only
 

@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { isAdmin } from "../../../../admin-auth";
 import { getMedia } from "../../../../media-catalog";
 import { metadataConfigured, metadataModel } from "../../../../media-enrich";
 import { getMeta } from "../../../../media-meta";
@@ -17,8 +18,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const isHost = you.id === room.hostId;
     return Response.json({
       meta: getMeta(mediaId),
-      // Only the host is offered the lookup button, so only the host needs to know whether it is set up.
-      ...(isHost ? { canLookUp: metadataConfigured(), model: metadataModel() } : {}),
+      // Only the signed-in admin who hosts is offered the lookup button, so only they need to know whether it is set up.
+      ...(isHost && isAdmin(request) ? { canLookUp: metadataConfigured(), model: metadataModel() } : {}),
     }, { headers: noStore });
   } catch (error) {
     return roomResponse(error);

@@ -52,6 +52,7 @@ moment, on whatever phone they have, including old ones on slow connections.
   across the picture for everybody.
 - In full screen (or a phone held sideways) incoming chat appears as **speech bubbles**; tap one to reply with the keyboard up.
 - Custom **room codes** that your friends can actually type, or random private links.
+- A **lock screen** and an **admin page**: the admin opens the site, sees every room, removes people and closes rooms.
 
 **Subtitles done properly**
 - Open the Subtitles panel to pick a track in one tap, then adjust **delay, how long lines stay, how many stack, size,
@@ -65,7 +66,7 @@ moment, on whatever phone they have, including old ones on slow connections.
 - **Per-person quality** for adaptive (HLS) videos: Auto, Data saver, or a fixed rung, independent of everyone else.
 
 **Running it**
-- **Media library** with uploads, a **storage cap (4 GB by default)** with a usage bar, and delete to free space.
+- **Media library** with admin-only uploads, a **storage cap (4 GB by default)** with a usage bar, and delete to free space.
 - A **prepare script** that turns almost any file into a browser-ready MP4 or an adaptive HLS ladder with subtitles and a poster.
 - Optional **web lookup of a video's details** (title, synopsis, cast) through a model you configure; off unless you set a key.
 - **English and Spanish**, chosen on the first visit.
@@ -138,6 +139,8 @@ Settings are environment variables (see [`deploy/screening.env.example`](deploy/
 
 | Variable | Default | What it does |
 | --- | --- | --- |
+| `ADMIN_PASSWORD` | `password` | The admin password: opens the locked site, lets the host upload and delete videos, and authorizes closing rooms and removing people. **Set your own** |
+| `SCREENING_LOCK` | on | Set `off` to remove the lock screen (the password is still needed for uploads and `/admin`) |
 | `MEDIA_DIR` | `.data/media` | Where videos, subtitles and posters live |
 | `SCREENING_DB_PATH` | `.data/screening.sqlite` | The SQLite database |
 | `MEDIA_ACCEL_PREFIX` | *(unset)* | Hand video bytes to Nginx (`/_media`) after the app has checked access. Unset, the app streams files itself |
@@ -183,7 +186,8 @@ language files match. The Spanish was written without a native-speaker review.
   membership. A room that doesn't exist and a room you haven't joined look identical from outside.
 - At most 10 wrong room codes per minute per address; commands must come from the app's own origin; the session cookie is
   `HttpOnly`; a room holds at most 50 people; reactions are limited to 6 per 2 seconds per person.
-- Only the host can upload, delete, choose the video or look up details. Uploads stream to disk and respect the storage cap.
+- **A lock screen and an admin password.** The site starts locked. The admin signs in on the lock screen with `ADMIN_PASSWORD`, which opens it for everyone else; the **Manage rooms** page (`/admin`) lists every room and who is in it, lets the admin remove a person or close a room, and lock the site again. Uploading and deleting videos (and the web lookup) need that sign-in as well as being the host. The password is checked in constant time, wrong guesses are limited per address, and the sign-in cookie is signed with a key made from the password, so changing it signs everybody out. The default password is `password`: change it before putting this on the internet.
+- Choosing the video, and play and seek, stay with the room's host. Uploads stream to disk and respect the storage cap.
 - No analytics and no third-party scripts. The running app makes no outbound requests except the optional **Find details**
   lookup, and it sends the video's file name, title, length and picture size (plus any hint the host types) when the host taps the button. (Next.js's own build tooling sends anonymous telemetry unless you set `NEXT_TELEMETRY_DISABLED=1`; the Docker image sets it.)
 - **Not designed for hostile networks.** It is a small private service for friends: there are no accounts, and anyone who has

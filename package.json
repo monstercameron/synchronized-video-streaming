@@ -10,6 +10,7 @@
     "media:prepare": "node scripts/prepare-media.mjs",
     "media:sample": "node scripts/install-sample.mjs",
     "i18n:check": "node scripts/i18n-check.mjs",
+    "admin:check": "node scripts/admin-check.mjs",
     "load:test": "node scripts/load-test.mjs"
   },
   "engines": {

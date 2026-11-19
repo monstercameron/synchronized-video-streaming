@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getMedia, toInfo } from "../../../../../media-catalog";
 import { findDetails, metadataConfigured } from "../../../../../media-enrich";
+import { assertAdmin } from "../../../../../admin-auth";
 import { getSession, noStore, readBody, roomResponse } from "../../../../../room-http";
 import { notifyMediaChanged, requireMembership, RoomError } from "../../../../../room-store";
 
@@ -13,6 +14,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { roomId } = await params;
     const { room, you } = requireMembership(roomId, getSession(request));
     if (you.id !== room.hostId) throw new RoomError(403, "err.host.lookup");
+    assertAdmin(request);
     if (!metadataConfigured()) throw new RoomError(503, "err.meta.notConfigured");
     const media = typeof body.mediaId === "string" ? getMedia(body.mediaId) : undefined;
     if (!media) throw new RoomError(404, "err.media.notInLibrary");

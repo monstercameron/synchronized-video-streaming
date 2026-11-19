@@ -9,6 +9,7 @@ import type { NextRequest } from "next/server";
 import { getMedia } from "../../../../../media-catalog";
 import { isMediaId } from "../../../../../room-shared";
 import { imageExtensions, mediaRoot, scanLibrary, subtitleExtensions, videoExtensions } from "../../../../../media-library";
+import { assertAdmin } from "../../../../../admin-auth";
 import { assertSameOrigin, getSession, noStore, roomResponse } from "../../../../../room-http";
 import { reserveSpace, usageChanged } from "../../../../../media-quota";
 import { formatSize } from "../../../../../media-format";
@@ -82,6 +83,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { roomId } = await params;
     const { room, you } = requireMembership(roomId, getSession(request));
     if (you.id !== room.hostId) throw new RoomError(403, "err.host.upload");
+    assertAdmin(request);
 
     const name = cleanName(request.nextUrl.searchParams.get("name") ?? "");
     if (!name || !allowed.includes(extname(name).toLowerCase())) {

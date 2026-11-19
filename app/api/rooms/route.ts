@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { joinRoom, RoomError } from "../../room-store";
+import { isAdmin } from "../../admin-auth";
+import { isMemberOf, joinRoom, RoomError } from "../../room-store";
+import { isOpen } from "../../site-lock";
 import { cookieName, getSession, noStore, readBody, roomResponse } from "../../room-http";
 import { assertNotThrottled, recordMiss } from "../../room-guard";
 import { cleanCodeInput, codeRules, isCustomCode, isRoomId, normalizeRoomId } from "../../room-shared";
@@ -19,6 +21,12 @@ export async function POST(request: NextRequest) {
     const wantsJoin = roomId !== undefined && roomId !== "";
     const wantsCode = code !== undefined && code !== null && code !== "";
     if (wantsJoin && wantsCode) throw new RoomError(400, "err.join.both");
+
+    // While the site is locked only the admin can start or join rooms. Someone who is already in a room can come back to it.
+    if (!isOpen() && !isAdmin(request)) {
+      const back = wantsJoin && typeof roomId === "string" ? normalizeRoomId(roomId) : "";
+      if (!back || !isMemberOf(back, getSession(request))) throw new RoomError(423, "err.locked");
+    }
 
     let target: string | undefined;
     let chosen: string | undefined;

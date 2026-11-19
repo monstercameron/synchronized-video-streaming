@@ -131,6 +131,8 @@ export function LibraryPanel({ room, isHost, send, quality, onQuality, profile }
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [pending, setPending] = useState<string>();
   const [storage, setStorage] = useState<Storage>();
+  // Uploading and deleting need the admin password (signed in on the management page), not just being the host.
+  const [admin, setAdmin] = useState(false);
   // A video the host tapped Delete on once. A second tap within a few seconds confirms.
   const [confirming, setConfirming] = useState<string>();
   const picker = useRef<HTMLInputElement>(null);
@@ -145,6 +147,7 @@ export function LibraryPanel({ room, isHost, send, quality, onQuality, profile }
       const payload = await response.json();
       if (!response.ok) throw new Error(fail(payload, "lib.err.load"));
       setItems(payload.items);
+      setAdmin(!!payload.admin);
       setProblems(payload.errors ?? []);
       setFolder(payload.folder);
       setStorage(payload.storage);
@@ -157,6 +160,13 @@ export function LibraryPanel({ room, isHost, send, quality, onQuality, profile }
   }, [roomId, fail, t]);
 
   useEffect(() => { if (isHost) void refresh(false); }, [isHost, refresh]);
+  // After signing in on the management page (another tab), coming back here picks the sign-in up.
+  useEffect(() => {
+    if (!isHost || admin) return;
+    const back = () => { if (!document.hidden) void refresh(false); };
+    document.addEventListener("visibilitychange", back);
+    return () => document.removeEventListener("visibilitychange", back);
+  }, [isHost, admin, refresh]);
 
   async function choose(item: LibraryItem) {
     if (pending || item.id === room.media?.id) return;
@@ -229,7 +239,7 @@ export function LibraryPanel({ room, isHost, send, quality, onQuality, profile }
         </p>
       )}
       <QualityControl {...{ quality, onQuality, profile }} media={room.media} />
-      {room.media && <AddSubtitles roomId={room.id} media={room.media} />}
+      {room.media && admin && <AddSubtitles roomId={room.id} media={room.media} />}
       {room.media && <DescribeVideo roomId={room.id} media={room.media} />}
       {storage && (
         <div className="storage" role="group" aria-label={t("storage.group")}>
@@ -244,10 +254,14 @@ export function LibraryPanel({ room, isHost, send, quality, onQuality, profile }
         </div>
       )}
       <div className="library-actions">
-        <button className="btn btn-primary" type="button" onClick={() => picker.current?.click()}>{t("lib.upload")}</button>
+        {admin && <button className="btn btn-primary" type="button" onClick={() => picker.current?.click()}>{t("lib.upload")}</button>}
         <button className="btn" type="button" onClick={() => void refresh(true)} disabled={loading}>{loading ? t("lib.scanning") : t("lib.rescan")}</button>
         <input ref={picker} type="file" hidden multiple accept="video/*,.mkv,.srt,.vtt,image/*" onChange={upload} />
       </div>
+
+      {!admin && items && (
+        <p className="sheet-note">{t("lib.adminOnly")} <a href="/admin" target="_blank" rel="noopener">{t("admin.openPage")}</a></p>
+      )}
 
       {uploads.map(upload => (
         <div className="upload" key={upload.id} data-error={!!upload.error}>
@@ -284,13 +298,13 @@ export function LibraryPanel({ room, isHost, send, quality, onQuality, profile }
                 <span className="compat" data-compat={item.compat} title={notesText(item)}>{t(`compat.${item.compat}` as const)}</span>
                 {(item.compat !== "universal" || !item.faststart) && <span className="video-note">{notesText(item)}</span>}
               </button>
-              <button
+              {admin && <button
                 className="btn video-delete" type="button" data-confirm={confirming === item.id}
                 onClick={() => void remove(item)} disabled={current || !!pending}
                 title={current ? t("lib.deleteTitleBusy") : t("lib.deleteTitle", { size: size(item.size) })}
               >
                 {confirming === item.id ? t("lib.deleteConfirm", { size: size(item.size) }) : current ? t("lib.deletePlaying") : t("lib.delete", { size: size(item.size) })}
-              </button>
+              </button>}
             </li>
           );
         })}

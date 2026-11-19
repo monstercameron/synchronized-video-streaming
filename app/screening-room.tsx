@@ -64,6 +64,8 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  // Why this browser is back at the join form: the admin removed it, or closed the room.
+  const [notice, setNotice] = useState("");
   const floatLayer = useRef<FloatHandle>(null);
   const bubbleLayer = useRef<BubbleHandle>(null);
   // A hidden input that is focused inside the tap on a chat bubble. Phones only raise the keyboard from within a tap,
@@ -208,6 +210,16 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
             addBubble(message);
           } else if (name === "reaction") {
             addFloater(JSON.parse(data) as Reaction);
+          } else if (name === "kicked" || name === "closed") {
+            // The admin took this browser out of the room. Stop listening and go back to the join form, saying why.
+            stream?.close();
+            setNotice(i18nRef.current.t(name === "kicked" ? "room.kicked" : "room.closed"));
+            setRoom(undefined);
+            setRoomId(undefined);
+            setConnection("join");
+            const url = new URL(window.location.href);
+            url.searchParams.delete("room");
+            window.history.replaceState(null, "", url);
           }
         } catch { /* A damaged event is skipped; the next state event repairs anything it carried. */ }
       },
@@ -245,6 +257,7 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
     }
     setJoining(true);
     setError("");
+    setNotice("");
     try {
       const response = await post("/api/rooms", body, describe);
       const result = await response.json() as { roomId: string };
@@ -349,6 +362,7 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
         <aside className="sheet" aria-labelledby="join-title">
           <h2 id="join-title">{roomId ? t("join.title.link") : t("join.title.new")}</h2>
           <p className="sheet-lede">{roomId ? t("join.lede.link") : t("join.lede.new")}</p>
+          {notice && connection === "join" && <p className="room-error" role="alert">{notice}</p>}
           {connection === "checking" ? <p role="status" className="sheet-note">{t("join.checking")}</p> : null}
           {connection === "unavailable" ? (
             <>
@@ -392,6 +406,7 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
             </form>
           ) : null}
           <LanguageSwitch />
+          <p className="sheet-note"><a className="admin-link" href="/admin">{t("admin.manage")}</a></p>
         </aside>
       )}
       <input ref={focusProxy} className="focus-proxy" aria-hidden="true" tabIndex={-1} readOnly inputMode="text" />
