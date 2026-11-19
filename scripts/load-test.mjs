@@ -2,7 +2,8 @@
 // react, and media is requested. Prints what the clients saw; the caller measures the server's CPU and memory around it.
 //   node scripts/load-test.mjs <port> <seconds> [rooms=5] [per=20]
 // Point it at a TEST server (it creates rooms and members), ideally started with its own SCREENING_DB_PATH and a MEDIA_DIR that
-// holds at least one small video. Measure the server process's CPU time and memory around the run (see README.md).
+// holds at least one small video, and with SCREENING_LOCK=off (the test starts rooms, which a locked site refuses). Measure the server
+// process's CPU time and memory around the run (see notes/performance.md).
 const port = process.argv[2] ?? "3200", seconds = Number(process.argv[3] ?? 25), ROOMS = Number(process.argv[4] ?? 5), PER = Number(process.argv[5] ?? 20);
 const base = `http://127.0.0.1:${port}`;
 let ipCounter = 0;

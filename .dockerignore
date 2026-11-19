@@ -6,6 +6,7 @@ node_modules
 .claude
 .data
 docs
+notes
 deploy
 *.mkv
 *.mp4

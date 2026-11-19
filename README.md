@@ -1,82 +1,106 @@
 <div align="center">
 
-# 🎬 Screening Room
+# Screening Room
 
-**Watch a video together, in perfect step, from your phones.**
+**Watch a video together, in sync, from your phones.**
 
-A private, self-hosted watch party. Everyone's picture stays in sync, with chat, @-mentions, scrolling emoji reactions,
-subtitles you can restyle live, and a layout built for a phone held in one hand.
+A self-hosted watch party: one small server, a folder of videos and a room code.<br>
+Everyone sees the same frame at the same moment, with chat, reactions and subtitles each person can style.
 
-[![Node.js](https://img.shields.io/badge/Node.js-24%2B-5fa04e?logo=nodedotjs&logoColor=white)](https://nodejs.org)
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](tsconfig.json)
-[![SQLite](https://img.shields.io/badge/SQLite-node%3Asqlite-003b57?logo=sqlite&logoColor=white)](https://nodejs.org/api/sqlite.html)
-[![Languages](https://img.shields.io/badge/languages-English%20%7C%20Espa%C3%B1ol-ffcf83)](#languages)
+[![Build](https://github.com/monstercameron/synchronized-video-streaming/actions/workflows/docker.yml/badge.svg)](https://github.com/monstercameron/synchronized-video-streaming/actions/workflows/docker.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8fe0bf)](LICENSE)
+[![Node.js 24+](https://img.shields.io/badge/Node.js-24%2B-5fa04e?logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![Docker image](https://img.shields.io/badge/ghcr.io-image-2496ed?logo=docker&logoColor=white)](https://github.com/monstercameron/synchronized-video-streaming/pkgs/container/synchronized-video-streaming)
+[![English | Español](https://img.shields.io/badge/languages-English%20%7C%20Espa%C3%B1ol-ffcf83)](#languages)
 
-### [▶ Try the interactive demo](https://monstercameron.github.io/synchronized-video-streaming/) · [Run it yourself](#quick-start) · [Deploy it](deploy/DOCKER.md)
+**[Interactive demo](https://monstercameron.github.io/synchronized-video-streaming/)** · [Quick start](#quick-start) · [Docker](#run-it-with-docker) · [How it works](#how-it-works) · [Documentation](#documentation)
 
 <br>
 
-<img src="docs/screenshots/room-chat.jpg" alt="A room on a phone: the video with subtitles, the control row, and the chat with an @-mention highlighted" width="260">
-&nbsp;
-<img src="docs/screenshots/subtitles-panel.jpg" alt="The subtitles panel opened under the buttons, with the track list on top and live timing and style controls" width="260">
-&nbsp;
-<img src="docs/screenshots/sideways-bubbles.jpg" alt="A phone held sideways: full-screen video with chat messages appearing as bubbles on the right" width="440">
+<img src="docs/screenshots/desktop.jpg" alt="A room on a laptop: the video with a subtitle and emoji reactions drifting across it, the control row underneath, and the chat beside it with @-mentions highlighted" width="820">
 
-<sub>Screenshots use the small generated sample video that ships with the project.</sub>
+<br><br>
+
+<img src="docs/screenshots/room-chat.jpg" alt="The same room on a phone: video on top, the control row, then the chat and the reaction bar" width="250">
+&nbsp;&nbsp;
+<img src="docs/screenshots/subtitles.jpg" alt="The Subtitles sheet on a phone: track choice and timing controls, with the film still playing above" width="250">
+&nbsp;&nbsp;
+<img src="docs/screenshots/people.jpg" alt="The People tab on a phone: the room code with a Copy button, Invite friends, and the list of people" width="250">
+
+<sub>Screenshots show the short generated sample video that ships with the project.</sub>
 
 </div>
 
----
+## Contents
 
-## Why this exists
+- [Why](#why) · [Features](#features) · [More screens](#more-screens)
+- [Quick start](#quick-start) · [Run it with Docker](#run-it-with-docker) · [Configuration](#configuration)
+- [How it works](#how-it-works) · [Admin and the lock](#admin-and-the-lock) · [Privacy and security](#privacy-and-security)
+- [Languages](#languages) · [Project layout](#project-layout) · [Testing](#testing) · [Documentation](#documentation)
+- [Status and limits](#status-and-limits) · [License](#license)
 
-Most "watch together" tools want an account, a subscription, or someone else's server. This one is a single Node process
-and a folder of videos that you run yourself. Share a room code, and everyone who joins sees the same frame at the same
-moment, on whatever phone they have, including old ones on slow connections.
+## Why
 
-## What you get
+Most "watch together" tools want an account, a subscription, or someone else's server. Screening Room is a single Node
+process and a folder of videos that you run yourself. You share a room code; everyone who joins plays the same video in
+step, on whatever phone they have, including older ones on slow connections.
 
-**Staying in sync**
-- One shared clock for the room. A play is scheduled a fraction of a second ahead so every device starts together;
-  small drift is corrected by nudging the playback speed, large drift by a quick jump.
-- **Anyone can pause; only the host can play or seek**, so one person's tap can't shove the film for everyone.
-  A viewer who can't start the video taps **Waiting** to send the host a "Play now" prompt.
-- **Pause me / Rejoin**: stop only your own screen (a phone call, a snack), then jump back to where the room is.
-- A device that restarts or reconnects jumps straight to the room's position, and learns how long a seek takes on that device.
-- Stalls are handled gracefully: a spinner, automatic retries when the connection drops, and the room is told when
-  someone is buffering ([details](#buffering-and-seeking)).
+## Features
 
-**Being together**
-- Chat with **@-mentions** (highlighted for the person mentioned), **@everyone**, and a reaction bar whose emoji scroll
-  across the picture for everybody.
-- In full screen (or a phone held sideways) incoming chat appears as **speech bubbles**; tap one to reply with the keyboard up.
-- Custom **room codes** that your friends can actually type, or random private links.
-- A **lock screen** and an **admin page**: the admin opens the site, sees every room, removes people and closes rooms. Friends who arrive early see a waiting screen that lets them in by itself the moment the site opens.
-- **Leave room** for everyone (two taps); the next person becomes host, and a room closes when its last person leaves. An old link to a closed room offers to start it again or use another code, instead of a dead end.
+**In sync**
+- One shared clock per room. A play is scheduled a moment ahead so every device starts together; small drift is corrected by
+  nudging the playback speed, larger drift by a quick jump.
+- **Anyone can pause; only the host can play or seek.** A viewer taps **Ask host** to send the host a "Play now" prompt.
+- **Pause me / Rejoin** stops only your own screen, then jumps back to where the room is.
+- Stalls are handled without stopping the room: a spinner, automatic retries, and a note to the others when someone is
+  buffering ([details](notes/buffering-and-seeking.md)).
 
-**Subtitles done properly**
-- Open the Subtitles panel to pick a track in one tap, then adjust **delay, how long lines stay, how many stack, size,
-  position, colour, opacity, outline, shadow and font** with live preview. Each person keeps their own look.
-- SRT and VTT upload by the host; Windows-1252 files are converted to UTF-8.
+**Together**
+- Chat with **@-mentions**, **@everyone**, and emoji reactions that drift across the picture for everybody.
+- In full screen, or on a phone held sideways, chat arrives as **speech bubbles** you can tap to reply.
+- Room codes your friends can type, or random private links. Anyone can **leave**; the next person becomes host.
 
-**Made for phones**
-- Mobile-first layout, full-screen rotation, a volume row, a scrolling control row, and keyboard-aware layout so the message
-  box is never hidden behind the on-screen keyboard.
-- **Low-end phone mode**: lighter effects, fewer timers, Data saver quality, and automatic detection of a slow device.
-- **Per-person quality** for adaptive (HLS) videos: Auto, Data saver, or a fixed rung, independent of everyone else.
+**Subtitles**
+- Pick a track in one tap, then adjust delay, how long lines stay, size, position, colours, outline and font while the film
+  plays. Each person keeps their own style.
+- The host can add `.srt` and `.vtt` files; older Windows-1252 files are converted to UTF-8.
 
-**Running it**
-- **Media library** with admin-only uploads, a **storage cap (4 GB by default)** with a usage bar, and delete to free space.
-- A **prepare script** that turns almost any file into a browser-ready MP4 or an adaptive HLS ladder with subtitles and a poster.
-- Optional **web lookup of a video's details** (title, synopsis, cast) through a model you configure; off unless you set a key.
-- **English and Spanish**, chosen on the first visit.
-- A **Docker image** built and published by GitHub Actions, a compose file with Nginx (HTTPS, HTTP/2, HTTP/3), and plain systemd and kernel-tuning files, plus measured performance notes.
+**Built for phones**
+- A mobile-first layout with large tap targets, panels that open as sheets without moving the picture, and a layout that
+  keeps working when the on-screen keyboard is up.
+- **Per-person quality** on adaptive (HLS) videos: Auto, Data saver or a fixed quality.
+- A **low-end phone mode** that turns itself on when a device is struggling. Animations respect "reduce motion".
+
+**For the person running it**
+- A **lock screen**: the site stays closed until the admin opens it. Friends who arrive early wait on a page that lets them in
+  by itself.
+- An **admin page** to open or lock the site, see every room, remove a person and close rooms.
+- A media library with uploads, a **storage cap** (4 GB by default) and delete; a script that turns almost any file into a
+  browser-ready MP4 or an adaptive HLS ladder.
+- A **Docker image** published by GitHub Actions on every push, and deployment guides for Nginx with HTTPS.
+- English and Spanish throughout.
+
+## More screens
+
+<div align="center">
+
+<img src="docs/screenshots/landscape.jpg" alt="A phone held sideways: the film fills the screen, a chat message appears as a speech bubble, and a strip of reactions sits in the corner" width="620">
+
+<br><br>
+
+<img src="docs/screenshots/lock.jpg" alt="The lock screen a friend sees before the admin opens the site: a short explanation, Check again, and the admin sign-in folded away" width="250">
+&nbsp;&nbsp;
+<img src="docs/screenshots/admin.jpg" alt="The admin page: whether the site is open, and a room with the people in it and buttons to remove someone or close the room" width="250">
+&nbsp;&nbsp;
+<img src="docs/screenshots/library.jpg" alt="The host's Video tab: upload, the library, storage used, and per-video settings" width="250">
+
+</div>
 
 ## Quick start
 
-You need **Node.js 24 or newer** (the app uses the built-in `node:sqlite`) and, for scanning and preparing videos,
-[FFmpeg](https://ffmpeg.org) on your PATH.
+You need **Node.js 24 or newer** (the app uses the built-in `node:sqlite`) and [FFmpeg](https://ffmpeg.org) on your PATH
+for reading and preparing videos.
 
 ```bash
 git clone https://github.com/monstercameron/synchronized-video-streaming.git
@@ -87,17 +111,52 @@ npm run build
 npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 
-Prefer containers? See [Docker on a droplet](deploy/DOCKER.md).
+Open `http://<your computer's address>:3000` on your phone (same Wi-Fi) and pick a language. The site starts **locked**:
+choose **I'm the admin** and enter the admin password, which is `password` until you set `ADMIN_PASSWORD`. Then start a room
+and send its code to a friend.
 
-Open `http://<your computer's address>:3000` on your phone (same Wi-Fi), pick a language, start a room, and send the code to
-a friend. Drop your own videos into `.data/media` (or upload them as host) and tap **Rescan** in the Video tab.
-
-Make a file browser-ready (copies video and audio when it can, converts only what it must):
+Add your own videos by dropping them into `.data/media` (or uploading them as host), then tap **Rescan** in the Video tab.
+To make a file browser-ready (it copies video and audio when it can and converts only what it must):
 
 ```bash
-npm run media:prepare -- "My Movie.mkv"                              # a fast-start MP4 with subtitles and a poster
-npm run media:prepare -- "My Movie.mkv" --hls --audio-lang eng       # an adaptive ladder (up to 1080p / 720p / 480p / 360p / 240p, depending on the source height)
+npm run media:prepare -- "My Movie.mkv"                          # a fast-start MP4 with subtitles and a poster
+npm run media:prepare -- "My Movie.mkv" --hls --audio-lang eng   # an adaptive ladder, up to 1080p
 ```
+
+## Run it with Docker
+
+Every push to `main` builds `ghcr.io/monstercameron/synchronized-video-streaming:latest` (plus `sha-<commit>` tags for
+rollbacks). On a server that already has Nginx in front, nothing is cloned or built there:
+
+```bash
+sudo mkdir -p /opt/screening /srv/screening/media && cd /opt/screening
+sudo chown -R 1000:1000 /srv/screening
+RAW=https://raw.githubusercontent.com/monstercameron/synchronized-video-streaming/main
+sudo curl -fsSLO $RAW/compose.shared-host.yaml
+sudo curl -fsSL $RAW/deploy/docker/env.example -o .env     # set ADMIN_PASSWORD in it
+sudo docker compose -f compose.shared-host.yaml up -d      # the app listens on 127.0.0.1:8110
+```
+
+Then put Nginx and HTTPS in front of it. [deploy/DOCKER.md](deploy/DOCKER.md) has the Nginx site file, the Certbot steps,
+updating and rolling back, and a second setup that brings its own Nginx container.
+
+## Configuration
+
+Settings are environment variables; [`deploy/screening.env.example`](deploy/screening.env.example) lists them all.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `ADMIN_PASSWORD` | `password` | Opens the locked site, authorizes uploads and deleting videos, and signs in to `/admin`. **Set your own.** |
+| `SCREENING_LOCK` | on | `off` removes the lock screen. The password is still needed for uploads and `/admin`. |
+| `MEDIA_DIR` | `.data/media` | Where videos, subtitles and posters live. |
+| `SCREENING_DB_PATH` | `.data/screening.sqlite` | The SQLite database. |
+| `MEDIA_ACCEL_PREFIX` | *(unset)* | Set to `/_media` behind Nginx so Nginx sends the video bytes after the app has checked access. Unset, the app streams files itself. |
+| `MEDIA_QUOTA_GB` | `4` | Cap on the whole media folder. Uploads that would pass it are refused. |
+| `MAX_UPLOAD_GB` | `20` | Largest single upload. |
+| `COMPRESS` | on | `off` behind Nginx, so responses are not compressed twice. |
+| `FFPROBE_PATH` | `ffprobe` | Only needed if ffprobe is not on the PATH. |
+| `METADATA_API_KEY` | *(unset)* | Turns on the host's optional **Find details** button (title, synopsis, cast from the web). Nothing is sent without it. |
+| `METADATA_MODEL`, `METADATA_API_BASE` | `gpt-6-luna`, `https://api.openai.com/v1` | The model and an OpenAI-compatible Responses API endpoint with web search. The default model name is a placeholder that has not been verified against any provider: set one your provider offers. |
 
 ## How it works
 
@@ -117,278 +176,98 @@ flowchart LR
   classDef p fill:#222935,stroke:#ffcf83,color:#f7f5ef
 ```
 
-- **Live updates over one open response per viewer** (Server-Sent Events) and tiny POSTs for commands. They share the same
-  HTTP/2 or HTTP/3 connection as the page and the video, so there is no second connection to set up (a WebSocket would need
-  one). After connecting, each update carries only what changed: about 120 bytes for a play or pause, against about 1 KB for
-  the whole room.
-- **The server works out a room's state once per change**, not once per viewer, and sends the same prepared message to
-  everyone who is in step. Only someone with something of their own to show (such as asking the host to play) gets an
-  individual message.
-- **Video bytes never go through the app in production.** The app only checks that you are in the room and that this is the
-  room's current video, then tells Nginx to send the file straight from disk (`X-Accel-Redirect`). Nginx also handles seeking.
-- **The playback clock.** Each device measures its offset from the server's clock (best of a few round trips, refreshed every
-  minute). A play is anchored 550 ms in the future so everyone starts together. While playing, a device that is off by more
-  than 0.18 s nudges its playback speed to 0.94x or 1.06x; more than 0.55 s off (0.12 s right after a play, pause or seek), it jumps. A jump aims slightly ahead by
-  the time seeks have recently taken on that device.
+- **One open response per viewer.** Room updates arrive over Server-Sent Events and commands go out as small POSTs. Both
+  share the HTTP/2 or HTTP/3 connection the page and the video already use. After connecting, an update carries only what
+  changed: about 120 bytes for a play or pause, against about 1 KB for the whole room.
+- **The server does the work once.** A room's state is worked out once per change, not once per viewer, and the same
+  prepared message goes to everyone who is in step.
+- **Video bytes skip the app.** In production the app only checks that you are in the room and that this is the room's
+  current video, then hands the file to Nginx (`X-Accel-Redirect`), which also handles seeking.
+- **The playback clock.** Each device measures its offset from the server's clock and refreshes it every minute. A play is
+  anchored 550 ms ahead so everyone starts together. While playing, a device more than 0.18 s off plays at 0.94× or 1.06×
+  until it is back in step; more than 0.55 s off, it jumps, aiming slightly ahead by the time seeks have taken on that device.
 
-Everything is a single process with an embedded database, which keeps a small droplet comfortable. The measured numbers
-are in [Performance notes](#performance-notes).
+It is a single process with an embedded database, which keeps a small server comfortable. Measured numbers are in the
+[performance notes](notes/performance.md).
 
-## Configuration
+## Admin and the lock
 
-Settings are environment variables (see [`deploy/screening.env.example`](deploy/screening.env.example)).
+The site starts locked. The admin signs in on the lock screen, which **opens the site for everyone**: from then on, anyone
+with a room code or link joins without a password, and the admin is the gatekeeper. Locking again only stops new people;
+those already in a room stay until they are removed or the room is closed.
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `ADMIN_PASSWORD` | `password` | The admin password: opens the locked site, lets the host upload and delete videos, and authorizes closing rooms and removing people. **Set your own** |
-| `SCREENING_LOCK` | on | Set `off` to remove the lock screen (the password is still needed for uploads and `/admin`) |
-| `MEDIA_DIR` | `.data/media` | Where videos, subtitles and posters live |
-| `SCREENING_DB_PATH` | `.data/screening.sqlite` | The SQLite database |
-| `MEDIA_ACCEL_PREFIX` | *(unset)* | Hand video bytes to Nginx (`/_media`) after the app has checked access. Unset, the app streams files itself |
-| `MEDIA_QUOTA_GB` | `4` | Cap on the whole media folder. Uploads that would pass it are refused |
-| `MAX_UPLOAD_GB` | `20` (example file: `4`) | Largest single upload |
-| `COMPRESS` | on | Set `off` behind Nginx so Node does not compress a second time |
-| `FFPROBE_PATH` | `ffprobe` | If ffprobe is not on the PATH |
-| `METADATA_API_KEY` | *(unset)* | Turns on the host's **Find details** button. Nothing is sent without it |
-| `METADATA_MODEL` / `METADATA_API_BASE` | `gpt-6-luna` / `https://api.openai.com/v1` | The model and an OpenAI-compatible Responses API endpoint with web search |
+The **Manage rooms** page (`/admin`) lists every room and who is in it, removes a person, closes a room, and locks or opens
+the site. Uploading and deleting videos need the admin sign-in as well as being the room's host. Choosing the video, play
+and seek stay with the host.
 
-> **About the lookup model:** the default model name is a placeholder taken from the original request and has not been
-> verified against any provider. Set `METADATA_MODEL` to a model your provider offers.
+## Privacy and security
+
+- Rooms are private. You need the code or link, and every request (video, subtitles, updates) is checked against room
+  membership. From outside, a room that does not exist and a room you have not joined look the same.
+- Wrong room codes are limited to 10 a minute per address and wrong admin passwords to 6. Commands must come from the app's
+  own origin, session cookies are `HttpOnly`, and a room holds at most 50 people.
+- The admin password is compared in constant time. The sign-in cookie is signed with a key made from the password, so
+  changing the password signs everyone out.
+- No analytics and no third-party scripts. The running app makes no outbound requests except the optional **Find details**
+  lookup, which sends a video's file name, title, length and picture size (plus any hint the host types) when the host taps
+  the button.
+- It is a small private service for friends, not a hardened public platform: there are no accounts, and anyone with a room's
+  code can join it once the site is open. Run it behind HTTPS, set a strong `ADMIN_PASSWORD`, and treat codes like passwords.
+
+## Languages
+
+English and Spanish. A first-time visitor chooses before anything else; the choice is kept in a cookie and can be changed
+from the join screen or Settings. Server errors travel as codes and are translated on the device, and dates, numbers and
+subtitle language names come from the browser's own locale data. `npm run i18n:check` verifies that the two language files
+have the same keys. The Spanish text has not had a native-speaker review.
 
 ## Project layout
 
 | Path | What is in it |
 | --- | --- |
-| `app/` | The Next.js app: pages and API routes (`app/api/rooms/…`), the player and room UI, and the server logic |
-| `app/room-store.ts` | Rooms, commands, shared state, who is connected, housekeeping |
-| `app/use-room-playback.ts` | The sync loop on each device |
+| `app/` | The Next.js app: pages, API routes under `app/api/`, the player and room UI, and the server logic |
+| `app/room-store.ts` | Rooms, commands, shared state, who is connected |
+| `app/use-room-playback.ts` | The sync loop that runs on each device |
 | `app/api/rooms/[roomId]/events/route.ts` | The live event stream |
-| `app/media-*.ts` | Library scan, catalog, serving files with Range support, storage quota, web lookup |
-| `app/i18n/` | English and Spanish texts (`en.ts` is the list of keys; the compiler checks `es.ts` matches) |
-| `Dockerfile`, `compose.yaml`, `.github/workflows/` | The container image, the droplet compose file, and the workflow that builds and publishes the image |
-| `deploy/` | Docker and non-Docker deployment guides (`DOCKER.md`, `README.md`), Nginx, systemd, kernel and environment files |
-| `scripts/` | Make a video browser-ready, check the language files, install the sample, load test |
-| `samples/` | A tiny generated demo video (adaptive, with subtitles) |
-| `docs/` | The GitHub Pages site (interactive demo and explainer) and README screenshots |
+| `app/admin-auth.ts`, `app/site-lock.ts` | The admin sign-in and the lock |
+| `app/media-*.ts` | Library scan, serving files with Range support, storage quota, web lookup |
+| `app/i18n/` | English and Spanish texts |
+| `Dockerfile`, `compose*.yaml`, `.github/workflows/` | The image, the compose files, and the workflow that builds and publishes it |
+| `deploy/` | Deployment guides and the Nginx, systemd and environment files |
+| `scripts/` | Prepare a video, install the sample, check the language files, load test, admin checks |
+| `notes/` | Performance measurements and how buffering is handled |
+| `docs/` | The GitHub Pages site and the screenshots used here |
 
-Developer commands: `npm run typecheck`, `npm run i18n:check`, `npm run load:test`, `npm run media:prepare`, `npm run media:sample`, and `npm run admin:check -- http://127.0.0.1:3200` (43 checks of the lock, the admin actions, leaving and removal, against a running server started with the same `ADMIN_PASSWORD`; use a throwaway database, it closes rooms).
-
-## Languages
-
-English and Spanish. A first-time visitor is asked which to use before anything else; the choice is kept in a cookie so
-the server renders it straight away next time, and it can be changed at any time from the join screen, the video details,
-or Settings. Server errors are sent as message codes and translated on the phone, and subtitle language names, dates,
-times and numbers (decimal comma in Spanish) come from the browser's own locale data. `npm run i18n:check` verifies the two
-language files match. The Spanish was written without a native-speaker review.
-
-## Privacy and security
-
-- Rooms are private: you need the code or link, and every request (video, subtitles, updates) is checked against room
-  membership. A room that doesn't exist and a room you haven't joined look identical from outside.
-- At most 10 wrong room codes per minute per address; commands must come from the app's own origin; the session cookie is
-  `HttpOnly`; a room holds at most 50 people; reactions are limited to 6 per 2 seconds per person.
-- **A lock screen and an admin password.** The site starts locked. The admin signs in on the lock screen with `ADMIN_PASSWORD`, which opens it for everyone (once open, anyone with a room code or link joins without a password: the admin is the gatekeeper, and locking again only stops new people) else; the **Manage rooms** page (`/admin`) lists every room and who is in it, lets the admin remove a person or close a room, and lock the site again. Uploading and deleting videos (and the web lookup) need that sign-in as well as being the host. The password is checked in constant time, wrong guesses are limited per address, and the sign-in cookie is signed with a key made from the password, so changing it signs everybody out. The default password is `password`: change it before putting this on the internet.
-- Choosing the video, and play and seek, stay with the room's host. Uploads stream to disk and respect the storage cap.
-- No analytics and no third-party scripts. The running app makes no outbound requests except the optional **Find details**
-  lookup, and it sends the video's file name, title, length and picture size (plus any hint the host types) when the host taps the button. (Next.js's own build tooling sends anonymous telemetry unless you set `NEXT_TELEMETRY_DISABLED=1`; the Docker image sets it.)
-- **Not designed for hostile networks.** It is a small private service for friends: there are no accounts, and anyone who has
-  a room's code can join it. Put it behind HTTPS (see the deployment guide) and treat codes like passwords.
-
-## Honest limits
-
-- Tested in a browser emulator at phone and tablet sizes and under simulated network trouble, **not on a range of real
-  phones**. Fullscreen rotation, the on-screen keyboard and Safari's built-in HLS player are the least-verified parts.
-- Two desktop browsers in one room stay within about 10 ms of each other on one machine (play, pause, seek, Pause me and Rejoin are checked that way); sync between real phones on real networks has not been measured.
-- The Docker image is built by GitHub Actions and the **shared-droplet setup** in [deploy/DOCKER.md](deploy/DOCKER.md) runs on one real droplet. The standalone compose file (with its own Nginx, HTTP/3) and the non-Docker systemd files have **not** been run on a real server: treat a first deploy with those as a dry run.
-- Performance figures come from one laptop; see the caveats in [Performance notes](#performance-notes).
-- Released under the [MIT License](LICENSE). The sample video in `samples/` is generated for this project.
-
----
-
-## Performance notes
-
-These are measurements, not promises. They were taken on one Windows 11 ARM64 laptop with the load generator running on the
-same machine, so absolute numbers on a droplet will differ and the CPU figures carry about ±0.5 s of run-to-run noise.
-Compare the numbers to each other, not to a server.
-
-### The load test
-
-`npm run load:test -- <port> <seconds> [rooms] [viewers per room]` (the file is `scripts/load-test.mjs`).
-Used here: **5 rooms × 20 viewers = 100 live connections for 25 seconds**. In that time the hosts play and pause every
-second, viewers chat about once a second and react about five times a second per room, and about 30 video range requests a
-second are made. That is roughly **17,000 events delivered, 840 commands and 690 media requests**, far busier than a real
-watch party. Server CPU is the process's CPU seconds during the run; memory is its working set.
-
-### Server CPU and memory
-
-| Version | CPU seconds (25 s run) | Peak memory |
-| --- | --- | --- |
-| Before this work | 6.61 | 186 MB |
-| After the code changes | 5.61 | 187 MB |
-| + `--max-old-space-size=160 --max-semi-space-size=2` | 5.86 (a second run: 6.92) | 117 MB (a second run: 109 MB) |
-| + `--max-semi-space-size=1` | 6.23 | 114 MB |
-| + `--max-old-space-size=128 --max-semi-space-size=1` | 6.31 | 114 MB |
-
-**Reading it:** the code changes took about 15% off the CPU (a bit more than the noise). The memory flags took about 38% off
-the peak for roughly 5 to 10% more CPU, because a small young generation makes the garbage collector run more often. The
-deployed service uses the 160 MB / 2 MB combination.
-
-**Where the CPU goes now.** A CPU profile of the optimised server under the same load showed the app's own code at only
-**1.3%** of the busy time. The rest is Next.js's per-request machinery and writing to sockets. So further gains come from
-doing less work *in Node* (static files, compression, video bytes), not from tuning the app code.
-
-#### What was changed for CPU
-
-- **Shared work per event.** A play, pause or new member used to be worked out separately for every viewer (several database
-  queries and hashing each time). It is now worked out once per change (`sharedState` in `app/room-store.ts`). The parts of
-  it that did not change are the very same objects as last time, so comparing two states is a few reference checks.
-- **Update messages made once.** The "what changed" message for viewers who are in step is built once and handed to all of
-  them (cached on the state it follows). Chat and reaction messages are turned into bytes once, not once per viewer.
-  Only a viewer with something of their own to show (someone asking the host to play) gets an individual message.
-- **Prepared statements are kept.** SQLite compiles a statement far slower than it runs it, and the same few statements
-  ran on every request. `app/db.ts` keeps the compiled ones.
-- **No disk flush after every write.** `PRAGMA synchronous = NORMAL` (safe in WAL mode; at worst the last moments before a
-  power cut are lost) instead of a flush for every chat message and playback command.
-- **Things read on every request are kept in memory** and dropped at exactly the moments they can change: the room's row,
-  its member list, which member a session belongs to, the video catalog and what is derived from it, and the real path of
-  the media folder. This matters most for HLS, where every segment request is checked.
-- **One keep-alive timer** for all open streams instead of one per viewer.
-- **Nginx does what it is better at** (see `deploy/`): it serves the app's JavaScript and CSS straight from disk with a year's
-  caching, compresses responses (so `COMPRESS=off` stops Node doing it a second time), and sends the video bytes.
-
-#### What was changed for memory
-
-- **Nothing in memory grows without limit.** A sweeper (once a minute, `sweep` in `app/room-store.ts`) forgets reaction
-  rate counters, "asked to play" requests and pauses for rooms nobody is connected to, and what a person reported about
-  their device ten minutes after they leave. The caches above have size limits as a safety net.
-- **Node flags and service limits** in `deploy/screening.service`: `--max-old-space-size=160 --max-semi-space-size=2`, and
-  systemd `MemoryHigh=320M` / `MemoryMax=420M` so a fault cannot take the whole droplet.
-- **No per-viewer copy of the room.** Each connection remembers only a reference to the last shared state it sent.
-
-### Bun: runtime, `--compile` and AOT bytecode
-
-The question was whether running the server on [Bun](https://bun.sh) would help, either as the runtime or as a compiled
-single-file executable, with or without ahead-of-time bytecode (`--bytecode`). Bun 1.4.4 (native Windows ARM64, a portable
-download that was deleted afterwards) was tried against the same standalone build of the app under Node 26.
-
-#### Bun as the runtime: it works, with trade-offs
-
-Built with the opt-in standalone output (`NEXT_STANDALONE=1 NEXT_DIST_DIR=.next-standalone npm run build`, then the
-static files copied in) and started with `bun server.js` instead of `node server.js`. `node:sqlite`, the live event streams,
-the command routes and the media routes all ran; the load test completed with no errors and the same number of events.
-Uploads, the library scan's `ffprobe` spawning and long-running connection drops were **not** exercised.
-
-| | Node 26 | Bun 1.4.4 |
-| --- | --- | --- |
-| Time until the port accepts connections (median of 5 starts) | 296 ms | 202 ms |
-| Time until the home page is served (median of 5) | 474 ms | 403 ms |
-| CPU seconds in the 25 s load test (two runs) | 5.81 and 6.25 | 6.58 and 6.14 |
-| Peak memory in the load test (two runs) | 183 and 167 MB | 140 and 134 MB |
-
-**Reading it:** Bun starts about 30% faster and uses about 20% less memory out of the box, with CPU that is the same within
-the noise (about 5% higher on average). But plain Node with the memory flags above reaches 109 to 117 MB, which is below
-Bun's 134 to 140 MB, so Bun's memory advantage disappears once Node is tuned.
-
-(An earlier start-up reading of 4 seconds for Node and 121 seconds for Bun was a measurement artifact of launching a program
-for the first time on this machine, not the app. It did not repeat in five timed starts.)
-
-#### `bun build --compile`: could not be made to work
-
-Compiling means embedding the program in one executable. It failed in four ways, in order:
-
-1. **Plain compile** of the standalone `server.js`: the bundler cannot resolve `./dev/next-dev-server`,
-   `./router-utils/setup-dev-bundler`, `../../lib/upgrade/nudge` and `@opentelemetry/api`. Next's standalone output leaves
-   out its development files on purpose, and the bundler follows every `require` whether it is used or not.
-2. **With those four stubbed** (they are dev-only or optional): it then cannot resolve `react-dom/server*` and
-   `react-server-dom-webpack/client`, which Next maps to its own bundled copies by a build-time alias that Bun's bundler does
-   not apply.
-3. **With `--packages external`** (embed only the entry file and load `next` from disk): this does compile, to a
-   **95.6 MB** executable, and **95.9 MB** with `--bytecode`, but the executable cannot start:
-   `Cannot find package 'next' from 'B:\~BUN\root\screening-compiled.exe'`. It looks for packages relative to its own
-   embedded root, not the folder it sits in, and setting `NODE_PATH` did not change that.
-4. **Bundling from the project root** (so the full `node_modules` is available) failed on the same `react-dom/server`.
-
-So there is **no working compiled build, and therefore no benchmark of one**. For the AOT case there is also nothing to
-gain even if it ran: in the only variant that compiles, `--bytecode` precompiles just the tiny entry file, and all of
-Next.js's own code is still loaded from disk, so start-up would be unchanged. (Both sizes are almost entirely the embedded
-Bun runtime.) Next.js is simply not built to be bundled into a single file; the supported ways to get a small self-contained
-deploy are the `standalone` output and, if wanted, a container.
-
-#### Recommendation
-
-**Stay on Node 24+ for the droplet.** It is the runtime Next.js 16 supports, it needs `node:sqlite` (which Bun happens to
-provide, but that is a moving target), and tuned Node already uses less memory than Bun. Bun is a reasonable thing to try if
-start-up time ever matters (`bun server.js` from the standalone build); if you do, re-run `npm run load:test`, and also test
-what the load test does not cover (large uploads, many dropped connections, `ffprobe` spawning) before relying on it.
-
-### Re-running the numbers
+## Testing
 
 ```bash
-# a test server with its own database and a small media folder
-SCREENING_DB_PATH=/tmp/load.sqlite MEDIA_DIR=/tmp/loadmedia PORT=3200 node node_modules/next/dist/bin/next start
-# in another terminal, while watching that process's CPU time and memory
-npm run load:test -- 3200 25 5 20
+npm run typecheck        # types
+npm run i18n:check       # English and Spanish have the same keys
+npm run load:test -- 3200 25   # 100 simulated viewers against a test server on port 3200 (see notes/performance.md)
+npm run admin:check -- http://127.0.0.1:3200
 ```
 
-The opt-in standalone build (`NEXT_STANDALONE=1 NEXT_DIST_DIR=.next-standalone npm run build`) writes to its own folder and
-does not touch the normal `.next` build.
+`admin:check` runs 43 checks of the lock, the admin actions, leaving and removal against a running server started with the
+same `ADMIN_PASSWORD`. Point it at a throwaway database: it closes rooms.
 
----
+## Documentation
 
-## Buffering and seeking
+- [Docker deployment](deploy/DOCKER.md): the image, a shared server, HTTPS, updating and rolling back
+- [Deployment without Docker](deploy/README.md): Nginx, systemd, limits, backups and troubleshooting
+- [Performance notes](notes/performance.md): the load test, CPU and memory, and Node compared with Bun
+- [Buffering and seeking](notes/buffering-and-seeking.md): what viewers see and how playback recovers
+- [Interactive demo](https://monstercameron.github.io/synchronized-video-streaming/): a simulated room in your browser
 
-Video that stalls or jumps is the most common thing to go wrong in a watch party, so the player says what is happening and
-recovers by itself instead of failing.
+## Status and limits
 
-### What the viewer sees
+- The Docker image is built by GitHub Actions, and the shared-server setup in the Docker guide runs on a real server. The
+  setup with its own Nginx container and the non-Docker systemd files have not been run on a real server yet.
+- Two desktop browsers in one room stay within about 10 ms of each other on one machine, and play, pause, seek, Pause me
+  and Rejoin are checked that way. Sync between real phones on real networks has not been measured.
+- The interface is checked in an emulated phone at 320 to 768 px in both languages, not on a range of real phones. True
+  full screen, the on-screen keyboard and Safari's built-in HLS player are the least-verified parts.
+- Performance figures come from one laptop; read them as comparisons, not as server numbers.
 
-- **A spinner over the picture** while the video waits for data: "Jumping…" after a seek, "Buffering…" when it runs out of
-  data while playing. It appears only if the wait lasts about a third of a second, so quick seeks do not flash one, and it
-  goes away a moment after the picture is back, so a stall that restarts straight away does not blink. After about three
-  seconds it adds "This is taking a while. Check your connection." The big play button steps aside while the spinner shows.
-- **A lighter bar on the timeline** showing how far the video has loaded ahead of the playing position, so a seek can be
-  aimed at what will start at once.
-- **"Connection to the video lost. Trying again…"** while a dropped connection is being retried, and "You're offline…" if the
-  browser reports no network. A failure screen appears only after several retries have failed.
+## License
 
-### What the room sees
-
-After a device has been waiting for data for **3 seconds**, it tells the room. The People tab shows a "Buffering" tag next to
-that person, and everyone else's picture shows "Ann is buffering…" while the room is playing. It clears itself when the person
-catches up, when they disconnect, or when a different video is loaded. Short waits are not reported. Nothing pauses the room:
-the person who fell behind jumps forward to the room's position once data arrives (the lead time learned from earlier jumps
-makes that land close). Pausing the room for slow viewers could be added later as a host option.
-
-### How recovery works
-
-- **Streaming (HLS) video:** a fatal network error is retried by restarting the download after 0.8, 1.6, 3.2, 6.4 and 8 seconds;
-  a decoding error resets the decoder (the second time also trying the other audio path). Getting data again resets the
-  counters. Coming back online restarts the download straight away.
-- **Single-file (MP4) video:** a network error reloads the file and resumes from the same spot, with the same growing pauses.
-  Anything that is not a network error shows the normal error with a "Try again" button.
-- **The sync loop no longer fights a slow jump.** The room keeps moving while the data for a jump is arriving, so the gap
-  grows and every check used to say "jump again", cancelling the download the last jump started, over and over on a slow
-  connection. While waiting for the first frames after a jump, the loop now lets it finish (for up to 5 seconds); one more
-  jump when the data arrives corrects what is left.
-
-### What was tested
-
-With a small proxy in front of the app that could throttle or cut the video connection on demand, on a desktop browser at
-320 px and 667 px wide, in English and Spanish:
-
-- A link slower than the video: "Jumping…" then "Buffering…" appeared and cleared as data arrived, and the room was told
-  (and told again when it recovered).
-- The connection cut mid-download: the browser resumed on its own with no error screen.
-- The network down while seeking, for 11 seconds (MP4) and 16 seconds (HLS): "Jumping…" the whole time, no error screen, and
-  playback resumed in step with the room (about 1 second after the network returned for MP4, about 7 seconds for HLS because
-  hls.js backs off its retries).
-- Another viewer reporting buffering: the notice and the People tag appeared and cleared.
-- The layout checks (no overflow, nothing clipped, spinner inside the picture) and the server behaviour tests.
-
-### What was not tested
-
-- **Real phones.** Real networks (walking between Wi-Fi and mobile data) behave differently from a proxy that drops a socket.
-- **Long outages.** Outages beyond about 20 seconds, where the retries run out and the error screen is supposed to appear.
-- **Safari's built-in HLS player**, which does not go through hls.js (it gets the spinner and the room report, but not the
-  hls.js retry logic).
-- **Big rooms.** The room is told when someone buffers, but the load test was not run with many people buffering at once.
+[MIT](LICENSE). The sample video in `samples/` was generated for this project.

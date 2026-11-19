@@ -1,8 +1,11 @@
 # Running the screening room with Docker on a droplet
 
 GitHub builds the image for you every time `main` changes and keeps it in the GitHub Container Registry. On the droplet you
-only pull it and start it. These files **have not been run on a real droplet yet** (and the image has not been built on
-the maintainer's machine, which has no Docker), so treat the first run as a dry run.
+only pull it and start it.
+
+> **What has been run for real:** the [shared-droplet setup](#shared-droplet-nginx-and-other-sites-already-there) (the app container
+> behind a droplet's own Nginx) is in use on a real droplet. The two-container setup in steps 2 and 3 (the app plus its own
+> Nginx container, with HTTP/3) has not been run on a real server yet: treat a first run of it as a dry run.
 
 ```
 git push  ->  GitHub Actions: typecheck, build the image  ->  ghcr.io/monstercameron/synchronized-video-streaming
@@ -100,8 +103,8 @@ the host's Nginx be the front door, like your other sites. **Nothing is cloned o
 GitHub, and only two small files are downloaded.
 
 Two images are published: `latest` runs on Node, `latest-bun` runs the same app on the Bun runtime (a standalone build started
-with `bun server.js`; it is **not** a compiled single binary, because Next.js cannot be compiled into one, see the README's
-Bun section). Pick one with `IMAGE` in `.env`.
+with `bun server.js`; it is **not** a compiled single binary, because Next.js cannot be compiled into one, see
+[the Bun notes](../notes/performance.md#bun-runtime---compile-and-aot-bytecode)). Pick one with `IMAGE` in `.env`.
 
 ```bash
 sudo mkdir -p /opt/screening /srv/screening/media && cd /opt/screening
@@ -134,4 +137,4 @@ docker compose -f compose.shared-host.yaml up -d`. The Nginx that ships with Ubu
 - **Nginx will not start after switching to HTTPS:** the certificate is not at `/etc/letsencrypt/live/YOUR.DOMAIN/`;
   go back to `NGINX_CONF=nginx-http.conf`, fix the certificate, and switch again.
 - **Memory:** the app container is capped at 512 MB (`mem_limit` in `compose.yaml`) and Node's heap at 160 MB; see the
-  performance notes in the main README before changing either.
+  [performance notes](../notes/performance.md) before changing either.

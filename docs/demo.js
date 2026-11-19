@@ -24,7 +24,7 @@
   I18N.add({
     "d.host": ["Host", "Anfitrión"], "d.roleHost": ["Host", "Anfitrión"], "d.roleViewer": ["Viewer", "Espectador"],
     "d.phone": ["{name}'s phone", "Teléfono de {name}"], "d.phoneHost": ["Host's phone", "Teléfono del anfitrión"],
-    "d.playAll": ["Play all", "Reproducir a todos"], "d.pauseAll": ["Pause all", "Pausar a todos"], "d.waiting": ["Waiting", "Esperando"],
+    "d.playAll": ["Play all", "Reproducir a todos"], "d.pauseAll": ["Pause all", "Pausar a todos"], "d.waiting": ["Ask host", "Pedir inicio"],
     "d.asked": ["Asked ✓", "Pedido ✓"],
     "d.pauseMe": ["Pause me", "Pausarme"], "d.rejoin": ["Rejoin", "Volver"],
     "d.seek": ["Seek", "Buscar"], "d.seekHost": ["Seek (host only)", "Buscar (solo el anfitrión)"],

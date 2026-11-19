@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 #
-# The same app on the Bun runtime instead of Node. Published as the ":bun" tag by .github/workflows/docker.yml.
+# The same app on the Bun runtime instead of Node. Published under the tags ending in "-bun" by .github/workflows/docker.yml.
 #
-# This is NOT a `bun build --compile` binary: Next.js cannot be bundled into a single executable (see "Bun" in the README).
+# This is NOT a `bun build --compile` binary: Next.js cannot be bundled into a single executable (see "Bun" in notes/performance.md).
 # It is Next's standalone output (server.js plus only the files it needs) run with `bun server.js`.
-# Untested here: uploads, the ffprobe scan and long-running connection drops under Bun (see the README's Bun notes).
+# Untested here: uploads, the ffprobe scan and long-running connection drops under Bun (see notes/performance.md).
 
 # ---- build (on Node, which Next.js builds with) ---------------------------------------------------
 FROM node:24-bookworm-slim AS build
