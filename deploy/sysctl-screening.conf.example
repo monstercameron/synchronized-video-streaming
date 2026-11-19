@@ -1,0 +1,23 @@
+# /etc/sysctl.d/90-screening.conf   (apply with: sudo sysctl --system)
+#
+# Kernel settings that help many small streaming connections and a few big video downloads on one droplet.
+
+# BBR keeps throughput up on lossy mobile links, where the default (cubic) backs off too hard.
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+
+# After a quiet moment (everyone paused) do not shrink the sending window back to the start: the next play would crawl.
+net.ipv4.tcp_slow_start_after_idle = 0
+
+# Keep the amount of unsent data queued in the kernel small, so a chat message or play command is not stuck behind
+# megabytes of video already queued on the same connection.
+net.ipv4.tcp_notsent_lowat = 131072
+
+# Detect a phone that vanished (walked out of Wi-Fi range) in about two minutes instead of two hours.
+net.ipv4.tcp_keepalive_time = 60
+net.ipv4.tcp_keepalive_intvl = 15
+net.ipv4.tcp_keepalive_probes = 4
+
+# QUIC (HTTP/3) is UDP: give it room to buffer.
+net.core.rmem_max = 7500000
+net.core.wmem_max = 7500000

@@ -1,0 +1,1430 @@
+/* Mobile first: the base styles are a phone held upright. Wider and
+   landscape layouts are layered on with min-width / orientation queries. A phone with its keyboard open is short and nearly square, so
+   "landscape phone" also requires a wide aspect ratio; otherwise opening the keyboard would switch layouts and close it. */
+
+:root {
+  color-scheme: dark;
+  --page: #0f1217;
+  --panel: #171c24;
+  --control: #222935;
+  --edge: #2e3745;
+  --text: #f7f5ef;
+  --muted: #aab2bd;
+  --gold: #ffcf83;
+  --gold-ink: #24190e;
+  --good: #8fe0bf;
+  --bad: #ffb4a2;
+  --tap: 2.75rem;
+  --gutter: 0.875rem;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  font: 1rem/1.45 system-ui, sans-serif;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, input { font: inherit; }
+button { touch-action: manipulation; }
+
+:where(button, input, summary, [role="tab"]):focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* ---------- App shell ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  block-size: 100vh;
+  block-size: 100dvh;
+  overflow: hidden;
+  padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-block-size: 3rem;
+  padding: env(safe-area-inset-top, 0px) var(--gutter) 0;
+  background: var(--panel);
+  border-block-end: 1px solid var(--edge);
+}
+
+.room-mark {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.375rem;
+  border: 1px solid var(--gold);
+  border-radius: 0.3125rem;
+  color: var(--gold);
+}
+
+.room-mark::before {
+  content: "";
+  margin-inline-start: 2px;
+  border-block: 4px solid transparent;
+  border-inline-start: 6px solid currentColor;
+}
+
+.topbar-title { display: grid; min-inline-size: 0; margin-inline-end: auto; line-height: 1.2; }
+.topbar-title strong { overflow: hidden; font-size: 0.9375rem; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-title span { color: var(--muted); font-size: 0.75rem; }
+
+.status-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  background: var(--control);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.status-pill i { inline-size: 0.5rem; block-size: 0.5rem; border-radius: 50%; background: var(--gold); }
+.status-pill[data-state="connected"] { color: var(--good); }
+.status-pill[data-state="connected"] i { background: var(--good); }
+.status-pill[data-state="reconnecting"] i { animation: pulse 1s ease-in-out infinite; }
+
+@keyframes pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .status-pill i { animation: none !important; } }
+
+/* ---------- Stage / player ---------- */
+
+.stage { min-inline-size: 0; background: #000; }
+
+.player { display: flex; flex-direction: column; min-inline-size: 0; background: var(--panel); }
+
+.player-picture {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  min-block-size: 0;
+  background: #000;
+}
+
+.player video {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+
+.player video::cue {
+  color: white;
+  background-color: #090d15eb;
+  font-size: clamp(0.9375rem, 4vw, 1.5rem);
+}
+
+/* Big, thumb-sized tap target over the picture. */
+.player-tap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: #0006;
+  cursor: pointer;
+}
+
+.player-tap span {
+  display: grid;
+  place-items: center;
+  inline-size: 4.25rem;
+  block-size: 4.25rem;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--gold-ink);
+  box-shadow: 0 0.5rem 1.5rem #0008;
+}
+
+.player-tap svg { inline-size: 2rem; block-size: 2rem; margin-inline-start: 0.1875rem; }
+
+.player-waiting {
+  position: absolute;
+  inset-inline: 0.5rem;
+  inset-block-end: 0.5rem;
+  margin: 0;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.5rem;
+  background: #0b0e14d9;
+  color: var(--text);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.player-deck { padding: 0.5rem var(--gutter) 0.625rem; border-block-end: 1px solid var(--edge); }
+
+/*
+ * The timeline floats over the bottom of the picture on a soft dark gradient. It fades out after 5 seconds without
+ * a touch, move or key press and comes back on the next one. While hidden it ignores touches, so the first tap only
+ * wakes it and never moves the video by accident.
+ */
+.player-timeline {
+  position: absolute;
+  z-index: 4;
+  inset-inline: 0;
+  inset-block-end: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 1.75rem 0.75rem 0;
+  background: linear-gradient(to top, #000000d9, #0000);
+  color: #fff;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px #000a;
+  transition: opacity 0.25s ease;
+}
+
+.player[data-controls="off"] .player-timeline { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .player-timeline { transition: none; } }
+
+/* Subtitles and notes step up out of the way while the timeline is showing. */
+.subtitle-stack { transition: bottom 0.2s ease; }
+.player[data-controls="on"] .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 2.5rem); }
+.player[data-controls="on"] .player-waiting { inset-block-end: 3.25rem; }
+
+.player-timeline span:first-child { color: #fff; }
+
+.player-timeline input {
+  appearance: none;
+  display: block;
+  inline-size: 100%;
+  block-size: 2.5rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.player-timeline input::-webkit-slider-runnable-track {
+  block-size: 0.25rem;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--gold) var(--played), #8794a8 var(--played), #8794a8 var(--buffered, 0%), #465265 var(--buffered, 0%));
+}
+
+.player-timeline input::-moz-range-track {
+  block-size: 0.25rem;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--gold) var(--played), #8794a8 var(--played), #8794a8 var(--buffered, 0%), #465265 var(--buffered, 0%));
+}
+
+.player-timeline input::-webkit-slider-thumb {
+  appearance: none;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  margin-block-start: -0.4375rem;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+.player-timeline input::-moz-range-thumb {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+/*
+ * One row that scrolls sideways, so every control keeps a comfortable size instead of being squeezed. It runs to the
+ * screen edges (negative margin, matching padding) so buttons slide under the edge, and the next button peeks in
+ * to show there is more. Swiping it never scrolls the page.
+ */
+.player-actions {
+  display: flex;
+  gap: 0.375rem;
+  margin-inline: calc(var(--gutter) * -1);
+  padding-inline: var(--gutter);
+  padding-block-end: 0.125rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: var(--gutter);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.player-actions::-webkit-scrollbar { display: none; }
+.player-actions > .player-button { flex: 0 0 auto; min-inline-size: 4.5rem; padding-inline: 0.625rem; scroll-snap-align: start; }
+.player-actions > .player-play { min-inline-size: 5.5rem; }
+
+.player-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  min-block-size: 3.25rem;
+  min-inline-size: 0;
+  padding: 0.25rem 0.125rem;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  background: var(--control);
+  color: var(--text);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+}
+
+.player-button svg { flex: 0 0 auto; inline-size: 1.375rem; block-size: 1.375rem; }
+.player-button[aria-pressed="true"] { border-color: #917447; background: #362c20; color: var(--gold); }
+.player-play { background: var(--gold); color: var(--gold-ink); }
+@media (min-width: 40rem) { .player-play { flex-direction: row; gap: 0.375rem; font-size: 0.9375rem; } }
+.player-button:disabled, .player-timeline input:disabled { opacity: 0.5; cursor: default; }
+
+.player-error, .player-notice { margin: 0.625rem 0 0; color: var(--muted); font-size: 0.8125rem; }
+.player-error p { margin: 0 0 0.5rem; }
+
+/*
+ * Full screen: the picture owns the whole screen. The button row floats over its bottom edge and, like the timeline,
+ * fades away after 5 seconds without a touch, so nothing sits permanently over the film. A touch brings it back.
+ */
+.player:fullscreen {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding-block-start: env(safe-area-inset-top, 0px);
+  background: #000;
+}
+.player:fullscreen .player-picture { block-size: 100%; aspect-ratio: auto; }
+
+.player:fullscreen > .player-deck {
+  position: absolute;
+  z-index: 5;
+  inset-inline: 0;
+  inset-block-end: 0;
+  padding: 1.5rem max(var(--gutter), env(safe-area-inset-right, 0px)) max(0.5rem, env(safe-area-inset-bottom, 0px)) max(var(--gutter), env(safe-area-inset-left, 0px));
+  border: 0;
+  background: none;
+  pointer-events: none; /* The empty part of the strip passes touches through to the picture. */
+}
+
+.player:fullscreen > .player-deck::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(to top, #000000d9, #0000); transition: opacity 0.25s ease; }
+.player:fullscreen > .player-deck > * { pointer-events: auto; }
+.player:fullscreen > .player-deck .player-actions { margin-inline: 0; padding-inline: 0; transition: opacity 0.25s ease; }
+.player[data-controls="off"]:fullscreen > .player-deck::before { opacity: 0; }
+.player[data-controls="off"]:fullscreen > .player-deck .player-actions { opacity: 0; pointer-events: none; }
+.player:fullscreen .player-timeline { inset-block-end: 4.25rem; }
+.player[data-controls="on"]:fullscreen .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 6.5rem); }
+.player[data-controls="on"]:fullscreen .player-waiting { inset-block-end: 7rem; }
+
+/* ---------- Shared controls ---------- */
+
+.btn {
+  min-block-size: var(--tap);
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--edge);
+  border-radius: 0.625rem;
+  background: var(--control);
+  color: var(--text);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn-primary { border-color: var(--gold); background: var(--gold); color: var(--gold-ink); }
+.btn-wide { inline-size: 100%; }
+.room-error { margin: 0; color: var(--bad); font-size: 0.875rem; }
+
+@media (hover: hover) {
+  .btn:not(:disabled):hover, .player-button:not(:disabled):hover { border-color: currentColor; }
+}
+
+/* ---------- Join sheet ---------- */
+
+.sheet {
+  min-block-size: 0;
+  padding: 1.5rem var(--gutter) max(1.5rem, env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  background: var(--page);
+}
+
+.sheet h2 { margin: 0; font: 400 1.75rem/1.1 Georgia, serif; letter-spacing: -0.03em; }
+.sheet-lede { margin: 0.5rem 0 0; color: var(--muted); }
+.sheet-note { margin: 1rem 0 0; color: var(--muted); font-size: 0.8125rem; }
+
+.join-form { display: grid; gap: 0.625rem; margin-block-start: 1.25rem; }
+.join-form label { color: var(--muted); font-size: 0.875rem; }
+
+.join-form input, .composer input, .invite-link {
+  min-inline-size: 0;
+  min-block-size: var(--tap);
+  inline-size: 100%;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--edge);
+  border-radius: 0.625rem;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1rem; /* 16px stops iOS Safari zooming into the field */
+}
+
+input::placeholder { color: var(--muted); }
+
+/* ---------- Room panel: tabs, chat, people ---------- */
+
+.panel { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); min-block-size: 0; background: var(--page); }
+
+.tabs { display: grid; grid-template-columns: 1fr 1fr; border-block-end: 1px solid var(--edge); background: var(--panel); }
+
+.tabs button {
+  min-block-size: var(--tap);
+  padding: 0.5rem;
+  border: 0;
+  border-block-end: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.tabs button[aria-selected="true"] { border-block-end-color: var(--gold); color: var(--text); }
+
+.badge {
+  display: inline-block;
+  min-inline-size: 1.25rem;
+  margin-inline-start: 0.25rem;
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  background: var(--control);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+.pane { display: flex; flex-direction: column; min-block-size: 0; }
+.pane-scroll { gap: 0.75rem; padding: var(--gutter); overflow-y: auto; }
+
+.chat-log {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-block-size: 0;
+  padding: var(--gutter);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.chat-empty { margin: auto; color: var(--muted); font-size: 0.875rem; text-align: center; }
+
+.chat-message {
+  align-self: flex-start;
+  max-inline-size: 82%;
+  padding: 0.4375rem 0.75rem;
+  border-radius: 1rem 1rem 1rem 0.25rem;
+  background: var(--control);
+}
+
+.chat-message[data-own="true"] {
+  align-self: flex-end;
+  border-radius: 1rem 1rem 0.25rem 1rem;
+  background: #3a2f21;
+}
+
+.chat-message strong { display: block; color: var(--gold); font-size: 0.75rem; overflow-wrap: anywhere; }
+.chat-message p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-message time { display: block; color: var(--muted); font-size: 0.6875rem; text-align: end; }
+
+/* Docked to the bottom edge, above the home indicator. */
+.composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  padding: 0.5rem var(--gutter) max(0.5rem, env(safe-area-inset-bottom, 0px));
+  border-block-start: 1px solid var(--edge);
+  background: var(--panel);
+}
+
+.pane > .room-error { padding: 0 var(--gutter) 0.5rem; background: var(--panel); }
+
+.people { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+.people li { display: flex; align-items: center; gap: 0.75rem; min-block-size: var(--tap); }
+.person-name { min-inline-size: 0; margin-inline-end: auto; overflow-wrap: anywhere; }
+.member-role { flex-shrink: 0; color: var(--muted); font-size: 0.8125rem; }
+
+.avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: 50%;
+  background: var(--control);
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* Keyboard open on a phone: give the chat the room, tuck the controls away. */
+@media (max-height: 34rem) {
+  .app[data-in-room="true"]:has(.composer input:focus) .player-deck { display: none; }
+  .app[data-in-room="true"]:has(.composer input:focus) .player-picture { aspect-ratio: auto; block-size: 7.5rem; }
+}
+
+/* ---------- Landscape phone: the video gets the whole screen ---------- */
+
+@media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) {
+  .app { grid-template-rows: minmax(0, 1fr); }
+  .topbar, .panel, .sheet { display: none; }
+  .stage, .player { block-size: 100%; }
+  .player { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+  .player-picture { block-size: 100%; aspect-ratio: auto; }
+  /* Same as full screen: the button row floats over the picture and fades with the timeline. */
+  .player > .player-deck {
+    position: absolute;
+    z-index: 5;
+    inset-inline: 0;
+    inset-block-end: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1.5rem max(var(--gutter), env(safe-area-inset-right, 0px)) max(0.25rem, env(safe-area-inset-bottom, 0px)) max(var(--gutter), env(safe-area-inset-left, 0px));
+    border: 0;
+    background: none;
+    pointer-events: none;
+  }
+  .player > .player-deck::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(to top, #000000d9, #0000); transition: opacity 0.25s ease; }
+  .player > .player-deck > * { pointer-events: auto; }
+  .player > .player-deck .player-actions { transition: opacity 0.25s ease; }
+  .player[data-controls="off"] > .player-deck::before { opacity: 0; }
+  .player[data-controls="off"] > .player-deck .player-actions { opacity: 0; pointer-events: none; }
+  .player-timeline { inset-block-end: 3.75rem; }
+  .player[data-controls="on"] .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 6rem); }
+  .player[data-controls="on"] .player-waiting { inset-block-end: 6.5rem; }
+  .player-actions { margin-inline: 0; padding-inline: 0; min-inline-size: 0; }
+  .player-actions > .player-button { min-inline-size: 3.25rem; padding-inline: 0.375rem; }
+  .player-actions > .player-play { min-inline-size: auto; padding-inline: 0.75rem; }
+  .player-play { inline-size: auto; padding-inline: 0.75rem; }
+  .player-button { min-block-size: var(--tap); }
+  .player-button:not(.player-play) span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .player-error, .player-notice { grid-column: 1 / -1; }
+}
+
+/* ---------- Tablet and up ---------- */
+
+@media (min-width: 40rem) {
+  :root { --gutter: 1.25rem; }
+  .player-button { flex-direction: row; gap: 0.375rem; font-size: 0.875rem; }
+  /* Wide enough for everything: the row stops scrolling and the buttons share the width. */
+  .player-actions { margin-inline: 0; padding-inline: 0; }
+  .player-actions > .player-button { flex: 1 1 auto; }
+  .sheet { inline-size: min(100%, 30rem); margin-inline: auto; padding-block-start: 2rem; }
+}
+
+/* ---------- Desktop: video beside the room ---------- */
+
+@media (min-width: 62rem) and (min-height: 32rem) {
+  .app {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .topbar { grid-column: 1 / -1; }
+  .stage {
+    display: grid;
+    align-content: start;
+    padding: 1.25rem;
+    overflow-y: auto;
+    background: var(--page);
+  }
+  .player { border: 1px solid var(--edge); border-radius: 1rem; overflow: hidden; box-shadow: 0 1.5rem 4rem #06091066; }
+  .panel, .sheet { grid-row: 2; grid-column: 2; border-inline-start: 1px solid var(--edge); }
+  .app[data-in-room="false"] .stage { grid-column: 1; }
+}
+
+/* ---------- Chat extras: mentions, emoji, reactions ---------- */
+
+.panel { position: relative; }
+.chat-wrap { position: relative; display: flex; flex: 1 1 0; flex-direction: column; min-block-size: 0; }
+.chat-wrap .chat-log { flex: 1 1 0; }
+
+.chat-message[data-grouped="true"] { margin-block-start: -0.125rem; }
+.chat-message[data-grouped="true"][data-own="false"] { border-start-start-radius: 0.25rem; }
+.chat-message[data-grouped="true"][data-own="true"] { border-start-end-radius: 0.25rem; }
+.chat-message a { color: var(--gold); overflow-wrap: anywhere; }
+
+.chat-message[data-mention="true"] {
+  background: #44371f;
+  box-shadow: inset 0.1875rem 0 0 var(--gold);
+  animation: mention-flash 1.8s ease-out 1;
+}
+
+/* Only the background animates: shadows are expensive to repaint on every frame of an animation. */
+@keyframes mention-flash {
+  0%, 35% { background: #7a5c22; }
+}
+
+mark.mention {
+  padding: 0 0.25em;
+  border-radius: 0.375rem;
+  background: #ffcf8338;
+  color: var(--gold);
+  font-weight: 650;
+}
+
+mark.mention[data-you="true"] { background: var(--gold); color: var(--gold-ink); }
+
+.badge[data-mention="true"] { background: var(--gold); color: var(--gold-ink); font-weight: 700; }
+
+.mention-toast {
+  position: absolute;
+  z-index: 5;
+  inset-inline: 0.5rem;
+  inset-block-start: calc(var(--tap) + 0.375rem);
+  display: grid;
+  gap: 0.125rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--gold);
+  border-radius: 0.75rem;
+  background: #3a2f1c;
+  box-shadow: 0 0.5rem 1.5rem #000a;
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+  animation: toast-in 0.22s ease-out;
+}
+
+.mention-toast strong { color: var(--gold); font-size: 0.8125rem; }
+.mention-toast span { overflow: hidden; font-size: 0.875rem; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-0.5rem); } }
+
+.jump-latest {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0.5rem;
+  margin-inline: auto;
+  inline-size: max-content;
+  padding: 0.4375rem 0.875rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--gold-ink);
+  box-shadow: 0 0.25rem 1rem #0009;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.reaction-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.125rem;
+  padding: 0.125rem var(--gutter);
+  overflow-x: auto;
+  border-block-start: 1px solid var(--edge);
+  background: var(--panel);
+  scrollbar-width: none;
+}
+
+.reaction-bar button, .emoji-picker button, .emoji-toggle {
+  display: grid;
+  place-items: center;
+  min-inline-size: var(--tap);
+  min-block-size: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: 0.625rem;
+  background: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+
+.reaction-bar button:active, .emoji-picker button:active { transform: scale(1.35); }
+.emoji-toggle { flex: 0 0 auto; background: var(--control); font-size: 1.25rem; }
+.emoji-toggle[aria-pressed="true"] { background: #362c20; }
+
+.emoji-picker {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  max-block-size: 10.5rem;
+  padding: 0.25rem var(--gutter);
+  overflow-y: auto;
+  border-block-start: 1px solid var(--edge);
+  background: var(--panel);
+}
+
+.emoji-picker button { min-inline-size: 0; font-size: 1.375rem; }
+
+.mention-list { margin: 0; padding: 0.25rem; list-style: none; border-block-start: 1px solid var(--edge); background: var(--panel); }
+
+.mention-list button {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  inline-size: 100%;
+  min-block-size: var(--tap);
+  padding: 0.25rem 0.625rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: none;
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+}
+
+.mention-list button[data-active="true"] { background: var(--control); }
+.mention-list small { margin-inline-start: auto; color: var(--muted); }
+.mention-list .avatar { inline-size: 1.75rem; block-size: 1.75rem; font-size: 0.8125rem; }
+
+.composer { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
+
+.mention-person {
+  inline-size: var(--tap);
+  block-size: var(--tap);
+  border: 0;
+  border-radius: 50%;
+  background: var(--control);
+  color: var(--gold);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Scrolling reactions: right to left across the picture, kept inside full screen. */
+.player-picture { container-type: inline-size; overflow: hidden; }
+.floaters { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: layout paint; }
+
+.floater {
+  position: absolute;
+  inset-inline-start: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 0.125rem;
+  animation: fly var(--speed, 4s) linear forwards;
+  will-change: transform;
+}
+
+.floater b { font-size: var(--size, 2rem); font-weight: 400; line-height: 1; text-shadow: 0 0.125rem 0.25rem #0009; }
+
+.floater i {
+  max-inline-size: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.0625rem 0.4375rem;
+  border-radius: 999px;
+  background: #000a;
+  color: #fff;
+  font: 650 0.625rem/1.3 system-ui, sans-serif;
+}
+
+.floater[data-own="true"] i { color: var(--gold); }
+
+/* Only `transform` moves, so the browser animates it on the compositor, on the display's own clock. --travel is a fixed
+   number of pixels set when the emoji appears (see float-layer.tsx), so the keyframes never depend on a size that can change. */
+@keyframes fly {
+  from { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(calc(var(--travel, 400px) * -0.5), -0.5rem, 0); }
+  to { transform: translate3d(calc(var(--travel, 400px) * -1), 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floater { inset-inline-start: calc(50% - 1rem); animation: pop 1.6s ease-out forwards; }
+  .chat-message[data-mention="true"] { animation: none; }
+  @keyframes pop { from { opacity: 0; } 15%, 80% { opacity: 1; } to { opacity: 0; } }
+}
+
+/* Keyboard open on a short screen: the chat gets the room, so tuck the reaction row away too. */
+@media (max-height: 34rem) {
+  .app[data-in-room="true"]:has(.composer input:focus) .reaction-bar { display: none; }
+}
+
+/* ---------- Video library ---------- */
+
+.tabs { grid-auto-flow: column; grid-auto-columns: 1fr; grid-template-columns: none; }
+
+.stage-empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.75rem;
+  aspect-ratio: 16 / 9;
+  padding: 1rem;
+  background: radial-gradient(ellipse at 50% 30%, #202b3a, #0b0e14 70%);
+  color: var(--muted);
+  text-align: center;
+}
+
+.stage-empty p { max-inline-size: 22rem; margin: 0; font-size: 0.9375rem; }
+
+.library-actions { display: flex; gap: 0.5rem; }
+.library-actions .btn:first-child { flex: 1 1 auto; }
+.pane-scroll code { padding: 0.0625rem 0.3125rem; border-radius: 0.3125rem; background: var(--control); font-size: 0.8125rem; overflow-wrap: anywhere; }
+
+.upload { display: grid; gap: 0.25rem; padding: 0.5rem 0.75rem; border-radius: 0.625rem; background: var(--control); font-size: 0.8125rem; }
+.upload span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload progress { inline-size: 100%; block-size: 0.375rem; accent-color: var(--gold); }
+.upload em { color: var(--bad); font-style: normal; }
+
+.video-list { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+
+.video-item {
+  display: grid;
+  gap: 0.1875rem;
+  inline-size: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--edge);
+  border-radius: 0.75rem;
+  background: var(--panel);
+  color: var(--text);
+  text-align: start;
+  font: inherit;
+}
+
+button.video-item { cursor: pointer; }
+button.video-item:disabled { opacity: 0.6; cursor: default; }
+.video-item[data-current="true"] { border-color: var(--gold); background: #2a2419; }
+.video-title { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; font-weight: 650; overflow-wrap: anywhere; }
+.video-title small { flex-shrink: 0; color: var(--gold); font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.video-meta { color: var(--muted); font-size: 0.8125rem; }
+.video-note { color: var(--muted); font-size: 0.75rem; }
+
+.compat {
+  justify-self: start;
+  margin-block-start: 0.125rem;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  background: var(--control);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.compat[data-compat="universal"] { color: var(--good); }
+.compat[data-compat="limited"] { color: var(--gold); }
+.compat[data-compat="convert"] { color: var(--bad); }
+
+@media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) { .stage-empty { aspect-ratio: auto; block-size: 100%; } }
+
+/* ---------- Device performance ---------- */
+
+.pane[hidden] { display: none; }
+
+.struggle { padding: 0.0625rem 0.5rem; border-radius: 999px; background: #4a2b24; color: var(--bad); font-size: 0.6875rem; font-weight: 700; }
+
+.struggle-banner, .player-struggle { margin: 0; padding: 0.625rem 0.75rem; border: 1px solid #7a4a3e; border-radius: 0.625rem; background: #33201c; color: #ffd9cf; font-size: 0.8125rem; }
+.player-struggle p { margin: 0 0 0.375rem; }
+.player-struggle .player-button { min-block-size: var(--tap); inline-size: 100%; flex-direction: row; font-size: 0.875rem; }
+
+.quality { margin: 0; padding: 0.625rem 0.75rem; border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--panel); }
+.quality legend { padding-inline: 0.25rem; color: var(--muted); font-size: 0.75rem; font-weight: 650; }
+.quality p { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.75rem; }
+.quality-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; padding: 0.1875rem; border-radius: 0.625rem; background: var(--page); }
+.quality-choice button { min-block-size: var(--tap); border: 0; border-radius: 0.5rem; background: none; color: var(--muted); font-weight: 650; cursor: pointer; }
+.quality-choice button[aria-checked="true"] { background: var(--gold); color: var(--gold-ink); }
+
+/* ---------- Low-end devices: set by usePlaybackQuality from the device profile ---------- */
+
+[data-perf="lite"] .floater i { display: none; }
+[data-perf="lite"] .floater b { text-shadow: none; }
+[data-perf="lite"] :is(.mention-toast, .jump-latest, .player-tap span, .player) { box-shadow: none; }
+[data-perf="lite"] :is(.reaction-bar button, .emoji-picker button) { transition: none; }
+[data-perf="lite"] :is(.chat-message[data-mention="true"], .mention-toast, .status-pill i) { animation: none; }
+[data-perf="lite"] .stage-empty { background: #0b0e14; }
+[data-perf="lite"] .player-tap { background: #0008; }
+
+.player-dismiss { min-block-size: var(--tap); padding: 0 0.25rem; border: 0; background: none; color: #ffd9cf; font: inherit; font-size: 0.8125rem; text-decoration: underline; cursor: pointer; }
+
+/* ---------- Subtitles (drawn by us, so every setting changes live) ---------- */
+
+/* Above the play overlay, so subtitles are never dimmed by it. */
+.subtitle-layer { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+
+.subtitle-stack {
+  position: absolute;
+  inset-inline: 3%;
+  bottom: var(--sub-bottom, 7%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2em;
+  /* Scales with the player's width, so the text stays in proportion in full screen. */
+  font-size: calc(var(--sub-scale, 1) * clamp(0.8rem, 4.2cqw, 2.25rem));
+  font-family: var(--sub-font);
+  font-weight: var(--sub-weight, 500);
+}
+
+.subtitle-line {
+  margin: 0;
+  max-inline-size: 100%;
+  padding: 0.05em 0.45em;
+  border-radius: 0.25em;
+  background: var(--sub-bg);
+  color: var(--sub-color);
+  text-align: center;
+  white-space: pre-line;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  -webkit-text-stroke: var(--sub-stroke, 0) var(--sub-stroke-color, #000);
+  paint-order: stroke fill;
+  text-shadow: var(--sub-shadow, none);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* ---------- Player settings drawer ---------- */
+
+.player-settings {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  max-block-size: min(52dvh, 30rem);
+  border-block-start: 1px solid var(--edge);
+  background: var(--panel);
+}
+
+.settings-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.375rem var(--gutter); border-block-end: 1px solid var(--edge); }
+
+.settings-tabs { display: grid; flex: 1; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.25rem; padding: 0.1875rem; border-radius: 0.625rem; background: var(--page); }
+.settings-tabs button { min-block-size: var(--tap); border: 0; border-radius: 0.5rem; background: none; color: var(--muted); font-weight: 650; cursor: pointer; }
+.settings-tabs [aria-selected="true"] { background: var(--gold); color: var(--gold-ink); }
+
+.settings-body { overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem var(--gutter) 1rem; }
+
+.set-group { display: grid; gap: 0.625rem; padding-block: 0.75rem; border-block-end: 1px solid var(--edge); }
+.set-group:last-of-type { border-block-end: 0; }
+.set-group h3 { margin: 0; color: var(--muted); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.set-row { display: grid; gap: 0.125rem; }
+.set-head { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.875rem; }
+.set-head output { color: var(--gold); font-variant-numeric: tabular-nums; }
+.set-row input[type="range"] { inline-size: 100%; min-block-size: var(--tap); margin: 0; accent-color: var(--gold); }
+.set-note { margin: 0; color: var(--muted); font-size: 0.75rem; }
+
+.swatches { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.swatch { display: block; inline-size: 2.75rem; block-size: 2.75rem; padding: 0; border: 2px solid var(--edge); border-radius: 50%; cursor: pointer; }
+.swatch[aria-checked="true"] { border-color: var(--text); box-shadow: 0 0 0 2px var(--gold); }
+.swatch-custom { position: relative; overflow: hidden; background: conic-gradient(#f33, #ff3, #3f3, #3ff, #33f, #f3f, #f33); }
+.swatch-custom input { position: absolute; inset: -0.5rem; inline-size: calc(100% + 1rem); block-size: calc(100% + 1rem); opacity: 0; cursor: pointer; }
+
+.segmented { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.1875rem; border-radius: 0.625rem; background: var(--page); }
+.segmented button { flex: 1 1 auto; min-block-size: var(--tap); padding: 0 0.75rem; border: 0; border-radius: 0.5rem; background: none; color: var(--muted); font: inherit; font-weight: 650; cursor: pointer; }
+.segmented [aria-checked="true"] { background: var(--gold); color: var(--gold-ink); }
+
+.nudges { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.25rem; }
+.nudges button, .chips button { min-block-size: var(--tap); border: 1px solid var(--edge); border-radius: 0.5rem; background: var(--control); color: var(--text); font: inherit; font-weight: 650; cursor: pointer; }
+.nudges button:disabled { opacity: 0.5; cursor: default; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.chips button { padding: 0 0.875rem; border-radius: 999px; }
+
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-block-size: var(--tap); padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: start; cursor: pointer; }
+.switch-row small { display: block; color: var(--muted); font-size: 0.75rem; }
+.switch-row i { position: relative; flex: 0 0 auto; inline-size: 2.75rem; block-size: 1.5rem; border: 1px solid var(--edge); border-radius: 999px; background: var(--control); }
+.switch-row i::after { content: ""; position: absolute; inset-block-start: 0.125rem; inset-inline-start: 0.125rem; inline-size: 1.125rem; block-size: 1.125rem; border-radius: 50%; background: var(--muted); transition: transform 0.15s; }
+.switch-row[aria-checked="true"] i { border-color: var(--gold); background: var(--gold); }
+.switch-row[aria-checked="true"] i::after { background: var(--gold-ink); transform: translateX(1.25rem); }
+
+.settings-reset { justify-self: start; min-block-size: var(--tap); padding: 0; border: 0; background: none; color: var(--gold); font: inherit; text-decoration: underline; cursor: pointer; }
+.settings-reset:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+
+.quality-rows { display: grid; gap: 0.25rem; }
+.quality-rows button { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-block-size: var(--tap); padding: 0.375rem 0.75rem; border: 1px solid var(--edge); border-radius: 0.625rem; background: var(--control); color: var(--text); font: inherit; text-align: start; cursor: pointer; }
+.quality-rows button[aria-checked="true"] { border-color: var(--gold); background: #2a2419; }
+.quality-rows small { margin-inline-start: 0.5rem; color: var(--gold); font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; }
+.quality-rows button span:last-child { color: var(--muted); font-size: 0.8125rem; text-align: end; }
+
+@media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) { .player-settings { max-block-size: 60dvh; } }
+
+.subs-form { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-block-start: 0.5rem; }
+.subs-form select, .subs-form input { min-block-size: var(--tap); padding: 0 0.75rem; border: 1px solid var(--edge); border-radius: 0.625rem; background: var(--page); color: var(--text); font: inherit; font-size: 1rem; }
+.subs-form input { inline-size: 8rem; }
+.subs-form .btn { flex: 1 1 auto; }
+.subs-ok { color: var(--good) !important; }
+
+/* Landscape phone: settings sit beside the video, so subtitle changes can be judged on a full-height picture. */
+@media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) {
+  .player:has(.player-settings) { grid-template-columns: minmax(0, 1fr) minmax(15rem, 44%); grid-template-rows: minmax(0, 1fr) auto; }
+  .player:has(.player-settings) > .player-picture { grid-column: 1; }
+  .player:has(.player-settings) > .player-deck { inset-inline-end: max(15rem, 44%); }
+  .player:has(.player-settings) > .player-settings { grid-column: 2; grid-row: 1 / span 2; max-block-size: none; border-block-start: 0; border-inline-start: 1px solid var(--edge); }
+}
+
+/* ---------- Room codes ---------- */
+
+.mode-tabs { margin-block-end: 0.25rem; }
+.code-hint { margin: 0; color: var(--muted); font-size: 0.8125rem; }
+.code-hint strong { color: var(--gold); overflow-wrap: anywhere; }
+
+.room-code { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.75rem; border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--panel); }
+.room-code small { display: block; color: var(--muted); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.room-code strong { display: block; color: var(--gold); font-size: 1.25rem; letter-spacing: 0.02em; overflow-wrap: anywhere; }
+
+.player-tap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; }
+.player-tap em { padding: 0.25rem 0.75rem; border-radius: 999px; background: #000a; color: #fff; font-size: 0.875rem; font-style: normal; font-weight: 650; }
+
+.player-button span { max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Shown while the video is playing silently because the browser blocked sound: one tap turns it on. */
+.player-sound {
+  position: absolute;
+  z-index: 3;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-block-size: var(--tap);
+  padding: 0 0.875rem;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  background: #000c;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.player-sound svg { inline-size: 1.125rem; block-size: 1.125rem; }
+
+/* Keyboard open on the start/join screen: the placeholder picture is not needed, so the form gets the room. */
+@media (max-height: 34rem) {
+  .app[data-in-room="false"]:has(.sheet input:focus) .stage { display: none; }
+}
+
+/* Wide content (the scrolling control row) must scroll inside its own box, never stretch the page. */
+.stage, .player, .player-deck, .panel { min-inline-size: 0; }
+.pane, .chat-wrap, .sheet { min-inline-size: 0; }
+
+/* ---------- Title bar: a long title scrolls sideways; tapping it opens the details ---------- */
+
+.topbar-title { min-inline-size: 0; flex: 1 1 auto; margin-inline-end: 0.5rem; }
+.topbar-title[data-interactive="true"] { cursor: pointer; border-radius: 0.5rem; }
+.topbar-title[data-interactive="true"]:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.title-row { display: flex; align-items: center; gap: 0.5rem; min-inline-size: 0; }
+
+.topbar-title strong.title-scroll {
+  display: block;
+  min-inline-size: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  text-overflow: clip;
+  white-space: nowrap;
+  /* A soft fade on whichever side still has more to read. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-left, 0px), #000 calc(100% - var(--fade-right, 0px)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-left, 0px), #000 calc(100% - var(--fade-right, 0px)), transparent 100%);
+}
+
+.topbar-title strong.title-scroll::-webkit-scrollbar { display: none; }
+
+.title-info {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  border: 1px solid var(--muted);
+  border-radius: 50%;
+  color: var(--muted);
+  font: italic 700 0.6875rem/1 Georgia, serif;
+}
+
+/* ---------- Video details: a bottom sheet made for a phone ---------- */
+
+dialog.details {
+  inline-size: 100%;
+  max-inline-size: 34rem;
+  max-block-size: 90dvh;
+  margin: auto auto 0;
+  padding: 0;
+  border: 0;
+  border-radius: 1.25rem 1.25rem 0 0;
+  background: var(--panel);
+  color: var(--text);
+  overflow: hidden;
+  animation: sheet-up 0.22s ease-out;
+}
+
+dialog.details::backdrop { background: #000a; }
+@keyframes sheet-up { from { transform: translateY(2rem); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { dialog.details { animation: none; } }
+@media (min-width: 40rem) { dialog.details { margin-block: auto; border-radius: 1.25rem; } }
+
+.details-sheet {
+  display: grid;
+  gap: 0.875rem;
+  max-block-size: 90dvh;
+  padding: 0.5rem var(--gutter) max(1rem, env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.details-handle { justify-self: center; inline-size: 2.5rem; block-size: 0.25rem; border-radius: 999px; background: var(--edge); }
+.details-poster { inline-size: 100%; aspect-ratio: 16 / 9; border-radius: 0.75rem; background: #000; object-fit: cover; }
+.details-sheet h2 { margin: 0; font: 400 1.5rem/1.2 Georgia, serif; letter-spacing: -0.02em; overflow-wrap: anywhere; user-select: text; }
+.details-sheet h3 { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.details-badges { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.details-badges span { padding: 0.1875rem 0.625rem; border-radius: 999px; background: var(--control); font-size: 0.8125rem; font-weight: 650; }
+.details-badges .compat[data-compat="universal"] { color: var(--good); }
+.details-badges .compat[data-compat="limited"] { color: var(--gold); }
+.details-badges .compat[data-compat="convert"] { color: var(--bad); }
+.details-note { margin: 0; color: var(--muted); font-size: 0.875rem; }
+
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin: 0; }
+.fact { padding: 0.625rem 0.75rem; border-radius: 0.75rem; background: var(--page); }
+.fact dt { color: var(--muted); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.fact dd { margin: 0.125rem 0 0; font-size: 0.9375rem; font-weight: 600; overflow-wrap: anywhere; user-select: text; }
+
+.details-list { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+.details-list li { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 0.625rem; background: var(--page); }
+.details-list small { color: var(--muted); }
+.details-code { margin-block-start: 0.5rem; }
+.details-close { margin-block-start: 0.25rem; }
+
+/* ---------- Chat / People / Video: the tab row scrolls sideways ---------- */
+
+.tabs {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { flex: 1 0 auto; min-inline-size: 6.5rem; padding-inline: 1.25rem; white-space: nowrap; scroll-snap-align: center; }
+
+/* ---------- Chat bubbles: other people's messages over the picture while the chat panel is out of sight ---------- */
+
+.chat-bubbles {
+  display: none;
+  position: absolute;
+  z-index: 3;
+  inset-block-start: 12%;
+  inset-inline-end: max(0.75rem, env(safe-area-inset-right, 0px));
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+  /* Big enough to read at arm's length on a phone held sideways. */
+  max-inline-size: min(24rem, 58%);
+  pointer-events: none; /* Only the bubbles take touches, never the empty space around them. */
+}
+
+.player:fullscreen .chat-bubbles { display: flex; }
+@media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) { .chat-bubbles { display: flex; } }
+
+.chat-bubble {
+  position: relative;
+  display: grid;
+  gap: 0.125rem;
+  max-inline-size: 100%;
+  min-block-size: 3.25rem; /* A comfortable thumb target, even for a one-word message. */
+  padding: 0.625rem 1rem;
+  border: 1px solid #ffffff33;
+  border-radius: 1.25rem 1.25rem 0.3125rem 1.25rem;
+  background: #0b0e14e6;
+  color: #fff;
+  font: inherit;
+  /* Scales with the height of the screen: about 17px on a 390px-tall phone, larger on a tablet. */
+  font-size: clamp(1.0625rem, 4.4vh, 1.5rem);
+  line-height: 1.3;
+  text-align: start;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: bubble-life 7s ease both;
+}
+
+/* The speech-bubble tail. */
+.chat-bubble::after {
+  content: "";
+  position: absolute;
+  inset-block-end: -0.3125rem;
+  inset-inline-end: 0.875rem;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-inline-end: 1px solid #ffffff26;
+  border-block-end: 1px solid #ffffff26;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.chat-bubble strong { color: var(--gold); font-size: 0.8em; font-weight: 700; }
+
+.chat-bubble span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.chat-bubble[data-mention="true"] { border-color: var(--gold); background: #3a2f1cf2; }
+
+@keyframes bubble-life {
+  0% { opacity: 0; transform: translateX(1rem) scale(0.96); }
+  4%, 90% { opacity: 0.92; transform: none; }
+  100% { opacity: 0; }
+}
+
+@keyframes bubble-fade { 0%, 100% { opacity: 0; } 4%, 90% { opacity: 0.92; } }
+@media (prefers-reduced-motion: reduce) { .chat-bubble { animation-name: bubble-fade; } }
+
+/* Reply bar for a phone that is physically sideways: sits above the keyboard. */
+.quick-reply {
+  position: fixed;
+  z-index: 30;
+  inset-inline: 0;
+  inset-block-end: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.5rem;
+  padding: 0.5rem max(var(--gutter), env(safe-area-inset-right, 0px)) max(0.5rem, env(safe-area-inset-bottom, 0px)) max(var(--gutter), env(safe-area-inset-left, 0px));
+  border-block-start: 1px solid var(--edge);
+  background: var(--panel);
+}
+
+.quick-reply input { min-inline-size: 0; min-block-size: var(--tap); padding: 0 0.875rem; border: 1px solid var(--edge); border-radius: 0.625rem; background: var(--page); color: var(--text); font-size: 1rem; }
+.quick-reply .room-error { grid-column: 1 / -1; }
+
+/* Focused inside the tap on a bubble to bring the keyboard up, then handed over to the real message box. */
+.focus-proxy { position: fixed; inset-block-end: 0; inset-inline-start: 0; inline-size: 1px; block-size: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; font-size: 16px; }
+
+/* ---------- "Play now?": what the host sees when viewers are waiting ---------- */
+
+.play-demand {
+  position: absolute;
+  z-index: 5;
+  inset-block-start: 0.625rem;
+  inset-inline: 0.625rem;
+  margin-inline: auto;
+  inline-size: max-content;
+  max-inline-size: calc(100% - 1.25rem);
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-block-size: var(--tap);
+  padding: 0.25rem 0.375rem 0.25rem 0.875rem;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  background: #1b1508f2;
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  animation: demand-in 0.3s ease-out, demand-pulse 1.4s ease-in-out 0.3s 3;
+}
+
+.play-demand svg { flex: 0 0 auto; inline-size: 1.25rem; block-size: 1.25rem; color: var(--gold); }
+.play-demand span { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.play-demand strong { color: var(--gold); }
+.play-demand em { flex: 0 0 auto; padding: 0.375rem 0.875rem; border-radius: 999px; background: var(--gold); color: var(--gold-ink); font-style: normal; font-weight: 700; }
+.play-demand:disabled { opacity: 0.6; }
+
+@keyframes demand-in { from { opacity: 0; transform: translateY(-0.75rem) scale(0.95); } }
+@keyframes demand-pulse { 0%, 100% { box-shadow: 0 0 0 0 #ffcf8300; } 50% { box-shadow: 0 0 0 0.5rem #ffcf8340; } }
+@media (prefers-reduced-motion: reduce) { .play-demand { animation: none; } }
+[data-perf="lite"] .play-demand { animation: demand-in 0.3s ease-out; }
+
+/* ---------- Looked-up details ---------- */
+.meta { display: grid; gap: 0.5rem; }
+.meta-line { margin: 0; color: var(--muted); font-size: 0.9375rem; }
+.meta-line strong { color: var(--text); }
+.meta-line span { color: var(--muted); }
+.meta-synopsis { margin: 0; font-size: 1rem; line-height: 1.5; user-select: text; }
+.meta-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin: 0; padding: 0; list-style: none; }
+.meta-tags li { padding: 0.25rem 0.625rem; border-radius: 999px; background: var(--page); font-size: 0.8125rem; font-weight: 600; }
+.meta-sources { margin: 0; color: var(--muted); font-size: 0.75rem; overflow-wrap: anywhere; }
+.meta-sources a { color: inherit; text-decoration: underline; }
+.find-details { display: grid; gap: 0.5rem; }
+.find-details input { min-block-size: var(--tap); padding: 0 0.75rem; border: 1px solid var(--edge); border-radius: 0.625rem; background: var(--page); color: var(--text); font: inherit; font-size: 1rem; }
+
+/* ---------- Volume row ---------- */
+/* The Volume button opens a row as wide as the player, under the buttons, holding the slider. */
+.volume-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  inline-size: 100%;
+  margin-block-start: 0.375rem;
+  padding: 0.25rem 0.75rem 0.25rem 0.5rem;
+  border: 1px solid var(--edge);
+  border-radius: 0.75rem;
+  background: var(--control);
+}
+.volume-mute { display: grid; place-items: center; flex: 0 0 auto; inline-size: var(--tap); block-size: var(--tap); padding: 0; border: 0; border-radius: 0.625rem; background: transparent; color: var(--text); cursor: pointer; }
+.volume-mute svg { inline-size: 1.375rem; block-size: 1.375rem; }
+.volume-percent { flex: 0 0 auto; min-inline-size: 3ch; color: var(--muted); font-size: 0.9375rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: end; }
+.volume-range {
+  --fill: 100%;
+  flex: 1 1 auto;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: var(--tap);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  touch-action: pan-y; /* A sideways drag moves the slider and does not scroll the page. */
+}
+.volume-range::-webkit-slider-runnable-track { block-size: 0.375rem; border-radius: 999px; background: linear-gradient(to right, var(--gold) var(--fill), var(--edge) var(--fill)); }
+.volume-range::-moz-range-track { block-size: 0.375rem; border-radius: 999px; background: var(--edge); }
+.volume-range::-moz-range-progress { block-size: 0.375rem; border-radius: 999px; background: var(--gold); }
+.volume-range::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; inline-size: 1.5rem; block-size: 1.5rem; margin-block-start: -0.5625rem; border: 0; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px #0008; }
+.volume-range::-moz-range-thumb { inline-size: 1.5rem; block-size: 1.5rem; border: 0; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px #0008; }
+.volume-range:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 0.5rem; }
+
+/* In full screen and on a sideways phone the buttons float over the picture. The row floats with them, fades with them,
+   and everything above it (timeline, subtitles) moves up to make room. */
+.player:fullscreen > .player-deck .volume-row { background: #000000b3; border-color: #ffffff26; transition: opacity 0.25s ease; }
+.player[data-controls="off"]:fullscreen > .player-deck .volume-row { opacity: 0; pointer-events: none; }
+.player[data-volume="open"]:fullscreen .player-timeline { inset-block-end: 8.5rem; }
+.player[data-volume="open"][data-controls="on"]:fullscreen .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 10.75rem); }
+.player[data-volume="open"][data-controls="on"]:fullscreen .player-waiting { inset-block-end: 11.25rem; }
+@media (orientation: landscape) and (max-height: 31rem) and (min-aspect-ratio: 3/2) {
+  .player > .player-deck .volume-row { background: #000000b3; border-color: #ffffff26; transition: opacity 0.25s ease; }
+  .player[data-controls="off"] > .player-deck .volume-row { opacity: 0; pointer-events: none; }
+  .player[data-volume="open"] .player-timeline { inset-block-end: 8rem; }
+  .player[data-volume="open"][data-controls="on"] .subtitle-stack { bottom: calc(var(--sub-bottom, 7%) + 10.25rem); }
+  .player[data-volume="open"][data-controls="on"] .player-waiting { inset-block-end: 10.75rem; }
+}
+
+/* ---------- Server storage ---------- */
+.storage { display: grid; gap: 0.375rem; padding: 0.625rem 0.75rem; border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--panel); }
+.storage p { margin: 0; color: var(--muted); font-size: 0.8125rem; }
+.storage strong { color: var(--text); }
+.storage-bar { block-size: 0.5rem; border-radius: 999px; background: var(--edge); overflow: hidden; }
+.storage-bar i { display: block; block-size: 100%; border-radius: inherit; background: var(--gold); transition: inline-size 0.3s ease; }
+.storage-bar i[data-full="true"] { background: var(--bad); }
+.video-delete { inline-size: 100%; min-block-size: var(--tap); margin-block-start: 0.25rem; color: var(--muted); font-size: 0.8125rem; }
+.video-delete[data-confirm="true"] { border-color: var(--bad); color: var(--bad); font-weight: 700; }
+
+/* ---------- Short portrait windows ---------- */
+/* A phone with the keyboard up, a half-height split-screen window beside WhatsApp or Discord, or a very small phone.
+   Without this the chat shrinks to a sliver. The picture gets a height cap, and while typing or picking an emoji
+   the button row and the reaction bar step aside so the conversation stays readable. */
+@media (orientation: portrait) and (max-height: 640px) {
+  .player-picture { max-block-size: 32dvh; }
+  .emoji-picker { max-block-size: 8rem; }
+  .mention-list { max-block-size: 7.5rem; overflow-y: auto; }
+  .app:has(.composer :is(input, textarea):focus) .player-deck,
+  .app:has(.emoji-picker) .player-deck,
+  .app:has(.composer :is(input, textarea):focus) .reaction-bar,
+  .app:has(.emoji-picker) .reaction-bar { display: none; }
+}
+@media (orientation: portrait) and (max-height: 520px) {
+  .player-picture { max-block-size: 26dvh; }
+  .app:has(.emoji-picker) .player-picture { max-block-size: 22dvh; }
+  .emoji-picker { max-block-size: 6.5rem; }
+}
+
+/* ---------- On-screen keyboard (see use-keyboard-layout.ts) ---------- */
+/* While the keyboard is up the page is exactly the part you can see: pinned to the visible area, so nothing is behind
+   the keyboard, even on iPhones where the page itself does not shrink. */
+html[data-keyboard="open"] .app {
+  position: fixed;
+  inset-block-start: var(--vvt, 0px);
+  inset-inline: 0;
+  block-size: var(--vvh, 100dvh);
+}
+/* Typing: the conversation is the point. The picture shrinks and the button row and reaction bar step aside. */
+html[data-keyboard="open"] .player-picture { max-block-size: calc(var(--vvh, 100dvh) * 0.3); }
+html[data-keyboard="open"] .player > .player-deck,
+html[data-keyboard="open"] .reaction-bar { display: none; }
+html[data-keyboard="open"] .emoji-picker { max-block-size: calc(var(--vvh, 100dvh) * 0.2); }
+html[data-keyboard="open"] .mention-list { max-block-size: calc(var(--vvh, 100dvh) * 0.2); overflow-y: auto; }
+/* The reply bar sits just above the keyboard, and the details sheet fits in what is visible. */
+html[data-keyboard="open"] .quick-reply {
+  inset-block-end: auto;
+  inset-block-start: calc(var(--vvt, 0px) + var(--vvh, 100dvh));
+  transform: translateY(-100%);
+}
+html[data-keyboard="open"] dialog.details {
+  inset-block: auto;
+  inset-block-start: calc(var(--vvt, 0px) + var(--vvh, 100dvh));
+  margin-block: 0;
+  max-block-size: calc(var(--vvh, 100dvh) * 0.94);
+  transform: translateY(-100%);
+  animation: none;
+}
+html[data-keyboard="open"] .details-sheet { max-block-size: calc(var(--vvh, 100dvh) * 0.94); }
+
+/* ---------- Language chooser ---------- */
+.lang-gate { display: grid; place-items: center; min-block-size: 100dvh; padding: 1.5rem var(--gutter); background: radial-gradient(ellipse at top, #1b2230, var(--page) 70%); }
+.lang-card { display: grid; gap: 1.25rem; inline-size: 100%; max-inline-size: 24rem; text-align: center; }
+.lang-title { display: grid; gap: 0.25rem; margin: 0; font: 400 1.75rem/1.2 Georgia, serif; }
+.lang-title span:last-child { color: var(--muted); font-size: 1.25rem; }
+.lang-options { display: grid; gap: 0.75rem; }
+.lang-options button { min-block-size: 4rem; border: 2px solid var(--edge); border-radius: 1rem; background: var(--panel); color: var(--text); font: inherit; font-size: 1.375rem; font-weight: 700; cursor: pointer; }
+.lang-options button[data-suggested="true"] { border-color: var(--gold); background: #362c20; color: var(--gold); }
+.lang-note { margin: 0; color: var(--muted); font-size: 0.875rem; }
+.lang-switch { display: flex; gap: 0.5rem; }
+.lang-switch button { flex: 1; min-block-size: var(--tap); border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--control); color: var(--text); font: inherit; font-weight: 650; cursor: pointer; }
+.lang-switch button[aria-checked="true"] { border-color: var(--gold); background: #362c20; color: var(--gold); }
+
+/* Bubbles are bigger now, so on a short screen only the newest two are shown. That keeps them clear of the timeline and
+   the buttons that float at the bottom while the controls are up. */
+@media (max-height: 31rem) {
+  .chat-bubble:nth-last-child(n + 3) { display: none; }
+  .chat-bubbles { inset-block-start: 8%; max-block-size: calc(100% - 8% - 9rem); }
+}
+/* Full screen on a phone that was not rotated (portrait): the picture is narrow, so give the bubbles more of it. */
+@media (max-width: 30rem) { .player:fullscreen .chat-bubbles { max-inline-size: 78%; } }
+
+/* ---------- Subtitles panel and language settings ---------- */
+.panel-title { margin: 0; padding: 0.5rem 0; font: 700 0.9375rem/1.2 system-ui, sans-serif; letter-spacing: 0.02em; }
+/* The track list is the quick pick: it stays short and scrolls, so the timing and style controls are not pushed far down. */
+.subs-tracks { max-block-size: 11.5rem; overflow-y: auto; overscroll-behavior: contain; }
+.set-select { inline-size: 100%; min-block-size: var(--tap); padding: 0 0.75rem; border: 1px solid var(--edge); border-radius: 0.625rem; background: var(--page); color: var(--text); font: inherit; font-size: 1rem; }
+/* Subtitles are on, but their panel is closed: the button says so in gold. */
+.player-button[data-on="true"]:not([aria-pressed="true"]) { color: var(--gold); }
+
+/* ---------- Cheaper rendering ---------- */
+/* Each chat line is laid out and styled on its own, so a new message does not make the browser re-check the rest. */
+.chat-message { contain: layout style; }
+/* Taps act at once and never start a double-tap zoom. */
+button, [role="button"], [role="tab"], [role="radio"], select, summary { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+
+/* ---------- Buffering and seeking ---------- */
+.player-spinner {
+  position: absolute;
+  z-index: 3;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  max-inline-size: 80%;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  background: #0b0e14cc;
+  color: var(--text);
+  font-size: 0.875rem;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none; /* Never gets in the way of the controls or a tap on the picture. */
+}
+.player-spinner i {
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border: 3px solid #ffffff40;
+  border-block-start-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .player-spinner i { animation: none; border-color: var(--gold); } }
+[data-perf="lite"] .player-spinner { background: #0b0e14f2; }
+
+.buffering-tag { padding: 0.125rem 0.5rem; border-radius: 999px; background: #362c20; color: var(--gold); font-size: 0.6875rem; font-weight: 700; }
+.player-spinner small { color: var(--muted); font-size: 0.75rem; }

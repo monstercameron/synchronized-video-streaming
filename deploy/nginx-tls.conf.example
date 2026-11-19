@@ -1,0 +1,39 @@
+# STEP 2 of 2: /etc/nginx/sites-available/screening  (replaces the step 1 file once the certificate exists)
+#
+# Needs nginx 1.25.1 or newer for "http2 on" and 1.25+ built with QUIC for HTTP/3. Ubuntu's own package is older:
+# install nginx from nginx.org's mainline repository (see the README). On an older nginx, delete the lines marked
+# "HTTP/3" and replace "http2 on;" with ",http2" after "ssl" on the listen lines; everything else still works.
+
+# HTTP -> HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name YOUR.DOMAIN;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    # One HTTPS connection carries the page, the live updates and the video together (HTTP/2), so a phone
+    # does not open a second connection for each of them.
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    # HTTP/3 (QUIC over UDP): no head-of-line blocking when a mobile network drops a packet, and a connection
+    # survives switching from Wi-Fi to mobile data. Browsers find it through the Alt-Svc header below.
+    listen 443 quic reuseport;           # HTTP/3
+    listen [::]:443 quic reuseport;      # HTTP/3
+    add_header Alt-Svc 'h3=":443"; ma=86400' always;   # HTTP/3
+    quic_retry on;                       # HTTP/3
+
+    server_name YOUR.DOMAIN;
+
+    ssl_certificate     /etc/letsencrypt/live/YOUR.DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/YOUR.DOMAIN/privkey.pem;
+    ssl_protocols TLSv1.3 TLSv1.2;       # TLS 1.3 needs one round trip to connect, 1.2 needs two.
+    ssl_prefer_server_ciphers off;
+    # Do not enable ssl_early_data: 0-RTT data can be replayed, and a replayed play/pause/chat request is not harmless.
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    include /etc/nginx/snippets/screening-locations.conf;
+}

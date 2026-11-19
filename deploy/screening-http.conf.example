@@ -1,0 +1,21 @@
+# /etc/nginx/conf.d/screening-http.conf
+# Settings that live at the top level of nginx (outside any server block).
+
+# The app runs on this machine. Keeping a few connections to it open saves a new TCP connection for every request.
+upstream screening_app {
+    server 127.0.0.1:3000;
+    keepalive 32;
+}
+
+# Compress what compresses well. Video, audio and images are already compressed: gzip would only spend CPU.
+gzip on;
+gzip_comp_level 5;
+gzip_min_length 512;
+gzip_vary on;
+gzip_proxied any;
+gzip_types text/plain text/css text/javascript application/javascript application/json image/svg+xml application/vnd.apple.mpegurl application/x-mpegurl text/vtt;
+
+# Reuse TLS sessions so a phone coming back after a pause skips most of the handshake.
+ssl_session_cache shared:SSL:10m;
+ssl_session_timeout 1d;
+ssl_session_tickets on;

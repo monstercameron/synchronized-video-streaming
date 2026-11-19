@@ -1,0 +1,32 @@
+# /etc/systemd/system/screening.service
+# Enable with:  sudo systemctl daemon-reload && sudo systemctl enable --now screening
+[Unit]
+Description=Screening room (synchronized video watching)
+After=network.target
+
+[Service]
+Type=simple
+User=screening
+Group=screening
+WorkingDirectory=/opt/screening/current
+EnvironmentFile=/etc/screening.env
+# Memory: a small young generation and a heap ceiling. Under 100 live viewers this took the peak from about 187 MB to about 117 MB
+# for a few percent more CPU (see deploy/README.md, "Server CPU and memory").
+Environment=NODE_OPTIONS="--max-old-space-size=160 --max-semi-space-size=2"
+# Node 24 or newer is required (the app uses the built-in node:sqlite module).
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
+Restart=on-failure
+# Keep the service from taking the whole droplet if something goes wrong: slowed down at 320 MB, stopped at 420 MB.
+MemoryHigh=320M
+MemoryMax=420M
+RestartSec=3
+
+# The service can only write to its data folder.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/screening
+
+[Install]
+WantedBy=multi-user.target

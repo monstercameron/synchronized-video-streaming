@@ -1,0 +1,26 @@
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.env*
+.data/
+
+# Videos and their by-products, wherever they end up. The media folder (.data/) is already ignored above.
+*.mkv
+*.mp4
+*.m4v
+*.mov
+*.webm
+*.avi
+*.m4s
+*.m3u8
+*.part
+# ...except the tiny demo video that ships with the project.
+!samples/**
+
+# Optional self-contained build used for the Bun experiments (see deploy/README.md)
+.next-standalone/
+
+# Local tooling config
+.claude/

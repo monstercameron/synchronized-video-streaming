@@ -1,0 +1,15 @@
+# STEP 1 of 2: /etc/nginx/sites-available/screening
+#
+# Plain HTTP only, just enough for Certbot to prove you own the domain and fetch a certificate.
+# Needs deploy/screening-http.conf.example in /etc/nginx/conf.d/ and
+# deploy/screening-locations.conf.example in /etc/nginx/snippets/ (see the README).
+#
+# Then:  sudo certbot certonly --nginx -d YOUR.DOMAIN
+# and replace this file with nginx-tls.conf.example (step 2), which adds HTTPS, HTTP/2 and HTTP/3.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name YOUR.DOMAIN;
+    include /etc/nginx/snippets/screening-locations.conf;
+}

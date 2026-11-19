@@ -1,0 +1,72 @@
+# /etc/nginx/snippets/screening-locations.conf
+# The part of the site that is the same on port 80 and on HTTPS. Included by both server blocks.
+
+# Videos are uploaded through the app, so allow large request bodies. Keep this in step with
+# MAX_UPLOAD_GB in /etc/screening.env (and never above MEDIA_QUOTA_GB, the cap on all videos together).
+client_max_body_size 4g;
+
+# --- Video files ---------------------------------------------------------------------------
+# The app checks that the caller is in the room and that this is the room's current video,
+# then answers with "X-Accel-Redirect: /_media/<file>". Nginx reads the file straight from disk
+# and handles Range requests (seeking) itself. "internal" means browsers cannot request
+# /_media/ directly, only the app can send them there.
+location /_media/ {
+    internal;
+    alias /var/lib/screening/media/;
+    sendfile on;
+    sendfile_max_chunk 1m;     # Do not let one fast viewer hog a worker while others wait.
+    tcp_nopush on;             # Fill packets with file data before sending.
+    aio threads;               # Slow disk reads do not stall other connections.
+    gzip off;
+    add_header Accept-Ranges bytes;
+}
+
+# --- The app's own JavaScript and CSS ------------------------------------------------
+# Fingerprinted files that never change under the same name: Nginx serves them straight from disk and tells browsers to keep
+# them for a year, so Node is not involved at all for the page's code. (Path: wherever the release is deployed.)
+location /_next/static/ {
+    alias /opt/screening/current/.next/static/;
+    expires 1y;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    access_log off;
+}
+
+# --- Live room updates (one long-lived response per viewer) --------------------------------
+# Must not be buffered or compressed, or updates arrive late.
+location ~ ^/api/rooms/[A-Za-z0-9_-]+/events$ {
+    proxy_pass http://screening_app;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_cache off;
+    gzip off;
+    tcp_nodelay on;           # Send each small update at once instead of waiting to fill a packet.
+    proxy_read_timeout 1h;    # The app sends a heartbeat every 15 seconds.
+}
+
+# --- Uploads -------------------------------------------------------------------------------
+# Stream the file to the app as it arrives instead of spooling a copy to disk first.
+location ~ ^/api/rooms/[A-Za-z0-9_-]+/library/upload$ {
+    proxy_pass http://screening_app;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_request_buffering off;
+    proxy_read_timeout 1h;
+    proxy_send_timeout 1h;
+}
+
+# --- Everything else -----------------------------------------------------------------------
+location / {
+    proxy_pass http://screening_app;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
