@@ -1,0 +1,19 @@
+# The screening room on a droplet that ALREADY runs its own Nginx (and other sites), see deploy/DOCKER.md, "Shared droplet".
+# Only the app runs in Docker. It listens on 127.0.0.1 only; the host's Nginx is the front door.
+#   cp deploy/docker/env.example .env      (edit it)
+#   docker compose -f compose.shared-host.yaml up -d
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/monstercameron/synchronized-video-streaming:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # The host's Nginx hands the video bytes out after the app has checked who is asking, and compresses pages itself.
+      MEDIA_ACCEL_PREFIX: /_media
+      COMPRESS: "off"
+    volumes:
+      # Videos and the database. Must be writable by uid 1000 (the "node" user in the image).
+      - ${DATA_DIR:-/srv/screening}:/data
+    mem_limit: 512m
+    ports:
+      - "127.0.0.1:${APP_PORT:-8110}:3000"

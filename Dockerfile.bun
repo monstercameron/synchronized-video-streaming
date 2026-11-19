@@ -1,0 +1,47 @@
+# syntax=docker/dockerfile:1
+#
+# The same app on the Bun runtime instead of Node. Published as the ":bun" tag by .github/workflows/docker.yml.
+#
+# This is NOT a `bun build --compile` binary: Next.js cannot be bundled into a single executable (see "Bun" in the README).
+# It is Next's standalone output (server.js plus only the files it needs) run with `bun server.js`.
+# Untested here: uploads, the ffprobe scan and long-running connection drops under Bun (see the README's Bun notes).
+
+# ---- build (on Node, which Next.js builds with) ---------------------------------------------------
+FROM node:24-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+ENV NEXT_STANDALONE=1
+RUN npm run build \
+ && cp -r .next/static .next/standalone/.next/static \
+ && cp -r public .next/standalone/public
+
+# ---- run -----------------------------------------------------------------------------------------
+FROM oven/bun:1-debian AS run
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000 \
+    MEDIA_DIR=/data/media \
+    SCREENING_DB_PATH=/data/screening.sqlite
+
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/samples ./samples
+
+# Videos and the database live in /data, which is a mounted folder (see compose.yaml), never inside the image.
+RUN mkdir -p /data/media && chown -R bun:bun /data
+USER bun
+VOLUME /data
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD bun -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"
+
+CMD ["bun", "server.js"]

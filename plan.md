@@ -2,7 +2,7 @@
 
 ## Goal and first release
 
-Build a private, browser-based screening room on the existing DigitalOcean Ubuntu Droplet. A host selects a prepared video and controls playback. Viewers join through an invitation and watch the same video at approximately the same position, with the subtitle track assigned to their viewer profile.
+Build a private, browser-based screening room on a DigitalOcean Droplet. A host selects a prepared video and controls playback. Viewers join through an invitation and watch the same video at approximately the same position, with the subtitle track assigned to their viewer profile.
 
 Start with one room, one host, and a capacity test for 8 simultaneous viewers. Android Chrome is the launch target. Test iPhone Safari and Windows Chrome and Edge as secondary targets. This plan assumes prerecorded videos, per-viewer subtitle assignment, and ordinary watch-party synchronization. Confirm the actual peak audience, required sync tolerance, Droplet specs, domain, and available test phones before committing to a launch target. If viewers will be in the same physical room with multiple speakers, validate audible echo separately and agree on a tighter target if needed.
 

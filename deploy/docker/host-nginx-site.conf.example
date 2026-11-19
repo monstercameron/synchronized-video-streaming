@@ -1,0 +1,72 @@
+# /etc/nginx/sites-available/screening  (for a droplet whose own Nginx already serves other sites)
+#
+# Replace YOUR.DOMAIN, point the domain's DNS at the droplet, then:
+#   sudo ln -s /etc/nginx/sites-available/screening /etc/nginx/sites-enabled/screening
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d YOUR.DOMAIN        (adds the HTTPS server block and the redirect)
+#
+# The app container listens on 127.0.0.1:8110 (APP_PORT in .env) and the data folder is /srv/screening (DATA_DIR).
+
+upstream screening_app {
+    server 127.0.0.1:8110;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name YOUR.DOMAIN;
+
+    # Keep in step with MAX_UPLOAD_GB and MEDIA_QUOTA_GB in .env.
+    client_max_body_size 4g;
+
+    # Video files: the app checks that the caller is in the room, then answers "X-Accel-Redirect: /_media/<file>" and Nginx
+    # sends the file from disk and handles Range requests (seeking) itself. "internal" means browsers cannot ask for it.
+    location /_media/ {
+        internal;
+        alias /srv/screening/media/;
+        sendfile on;
+        sendfile_max_chunk 1m;
+        tcp_nopush on;
+        aio threads;
+        gzip off;
+        add_header Accept-Ranges bytes;
+    }
+
+    # Live room updates: one long-lived response per viewer. Must not be buffered or compressed.
+    location ~ ^/api/rooms/[A-Za-z0-9_-]+/events$ {
+        proxy_pass http://screening_app;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        tcp_nodelay on;
+        proxy_read_timeout 1h;
+    }
+
+    # Uploads: stream to the app as the file arrives.
+    location ~ ^/api/rooms/[A-Za-z0-9_-]+/library/upload$ {
+        proxy_pass http://screening_app;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_request_buffering off;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
+    location / {
+        proxy_pass http://screening_app;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

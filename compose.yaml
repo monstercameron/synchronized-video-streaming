@@ -1,0 +1,38 @@
+# The screening room on a droplet: the app plus Nginx. See deploy/DOCKER.md.
+#   cp deploy/docker/env.example .env      (edit it)
+#   docker compose up -d
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/monstercameron/synchronized-video-streaming:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Nginx hands the video bytes out after the app has checked who is asking, and compresses pages itself.
+      MEDIA_ACCEL_PREFIX: /_media
+      COMPRESS: "off"
+    volumes:
+      # Videos and the database. Must be writable by uid 1000 (the "node" user in the image).
+      - ${DATA_DIR:-/srv/screening}:/data
+    mem_limit: 512m
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      # nginx-http.conf works straight away; nginx-tls.conf adds HTTPS, HTTP/2 and HTTP/3 once a certificate exists.
+      - ./deploy/docker/${NGINX_CONF:-nginx-http.conf}:/etc/nginx/templates/default.conf.template:ro
+      - ./deploy/docker/locations.conf:/etc/nginx/snippets/screening-locations.conf:ro
+      - ${DATA_DIR:-/srv/screening}:/data:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro

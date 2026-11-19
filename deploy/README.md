@@ -1,7 +1,8 @@
 # Running the screening room on a DigitalOcean droplet
 
-These files are written for a plain Ubuntu droplet. They have **not been run on a real droplet yet**, so
-treat the first deploy as a dry run and read each step before pasting it.
+These files are written for a plain Ubuntu droplet. They have **not been run on a real droplet yet**, so treat the first deploy as a dry run and read each step before pasting it.
+
+Prefer containers? [DOCKER.md](DOCKER.md) runs the same setup from a prebuilt image on GitHub Container Registry.
 
 ## What you need
 
