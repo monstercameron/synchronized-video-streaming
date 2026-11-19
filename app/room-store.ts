@@ -294,6 +294,9 @@ export function applyCommand({ room, you }: Membership, command: RoomCommand) {
     `).run(room.id, room.id);
     broadcast(room.id, { type: "chat", message: { id: Number(result.lastInsertRowid), authorId: you.id, text: command.text, sentAt: now } });
     return;
+  } else if (command.type === "leave") {
+    kickMember(room.id, you.id, true);
+    return;
   } else if (command.type === "react") {
     broadcast(room.id, { type: "reaction", reaction: newReaction(you.id, command.emoji, now) });
     return;
@@ -469,16 +472,16 @@ function forgetMember(memberId: string) {
 }
 
 /**
- * Remove one person from a room. They are told, disconnected, and need to join again (their chat lines go with them). If the
+ * Remove one person from a room (the admin removing them, or `byChoice`: they chose to go). They are told, disconnected, and need to join again (their chat lines go with them). If the
  * host is removed the next person to have joined becomes the host; if nobody is left the room is closed.
  */
-export function kickMember(roomId: string, memberId: string) {
+export function kickMember(roomId: string, memberId: string, byChoice = false) {
   const db = database();
   const room = getRoom(roomId);
   const target = db.prepare("SELECT id FROM members WHERE id = ? AND room_id = ?").get(memberId, roomId);
   if (!target) throw new RoomError(404, "err.admin.noMember");
   // Told first, while their connection still exists.
-  broadcast(roomId, { type: "kick", memberId });
+  broadcast(roomId, { type: "kick", memberId, ...(byChoice ? { left: true } : {}) });
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("DELETE FROM messages WHERE author_id = ?").run(memberId);

@@ -121,7 +121,7 @@ export type RoomEvent =
   | { type: "chat"; message: RoomMessage }
   | { type: "reaction"; reaction: Reaction }
   /** The admin removed one person (that person is told and disconnected; everyone else ignores it). */
-  | { type: "kick"; memberId: string }
+  | { type: "kick"; memberId: string; left?: boolean }
   /** The admin closed the room: everybody in it is told and disconnected. */
   | { type: "closed" };
 
@@ -155,7 +155,9 @@ export type RoomCommand =
   /** This device has been waiting for video data for a few seconds (on), or has caught up again (off). */
   | { type: "buffering"; on: boolean }
   | { type: "chat"; text: string }
-  | { type: "react"; emoji: string };
+  | { type: "react"; emoji: string }
+  /** This person leaves the room (and is told it worked by the answer, not by an event). */
+  | { type: "leave" };
 
 /** Random room IDs are exactly 22 characters, so a chosen code (4 to 20) can never be mistaken for one. */
 const randomRoomId = /^[A-Za-z0-9_-]{22}$/;

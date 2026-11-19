@@ -452,5 +452,10 @@ export const es: Record<MessageKey, string> = {
   "admin.err.action": "Eso no funcionó.",
   "room.kicked": "El administrador te sacó de la sala.",
   "room.closed": "El administrador cerró esta sala.",
+  "leave.button": "Salir de la sala",
+  "leave.confirm": "Toca otra vez para salir",
+  "leave.confirmHost": "Eres el anfitrión. Toca otra vez para salir: la siguiente persona será anfitrión",
+  "leave.busy": "Saliendo…",
+  "room.left": "Saliste de la sala.",
   // @@END
 };

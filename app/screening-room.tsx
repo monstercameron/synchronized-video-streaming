@@ -65,7 +65,17 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   // Why this browser is back at the join form: the admin removed it, or closed the room.
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<{ text: string; bad: boolean }>();
+  /** Back to the join form, saying why (or that leaving worked). Used when the admin removes this browser, closes the room, or the person leaves. */
+  const backToJoin = useCallback((key: "room.kicked" | "room.closed" | "room.left") => {
+    setNotice({ text: i18nRef.current.t(key), bad: key !== "room.left" });
+    setRoom(undefined);
+    setRoomId(undefined);
+    setConnection("join");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("room");
+    window.history.replaceState(null, "", url);
+  }, []);
   const floatLayer = useRef<FloatHandle>(null);
   const bubbleLayer = useRef<BubbleHandle>(null);
   // A hidden input that is focused inside the tap on a chat bubble. Phones only raise the keyboard from within a tap,
@@ -210,16 +220,10 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
             addBubble(message);
           } else if (name === "reaction") {
             addFloater(JSON.parse(data) as Reaction);
-          } else if (name === "kicked" || name === "closed") {
-            // The admin took this browser out of the room. Stop listening and go back to the join form, saying why.
+          } else if (name === "kicked" || name === "closed" || name === "left") {
+            // This browser was taken out of the room (or chose to leave). Stop listening and go back to the join form.
             stream?.close();
-            setNotice(i18nRef.current.t(name === "kicked" ? "room.kicked" : "room.closed"));
-            setRoom(undefined);
-            setRoomId(undefined);
-            setConnection("join");
-            const url = new URL(window.location.href);
-            url.searchParams.delete("room");
-            window.history.replaceState(null, "", url);
+            backToJoin(name === "kicked" ? "room.kicked" : name === "closed" ? "room.closed" : "room.left");
           }
         } catch { /* A damaged event is skipped; the next state event repairs anything it carried. */ }
       },
@@ -237,7 +241,7 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
       clearInterval(clock);
       document.removeEventListener("visibilitychange", refreshClock);
     };
-  }, [roomId, attempt, addFloater, addBubble]);
+  }, [roomId, attempt, addFloater, addBubble, backToJoin]);
 
   async function join(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -257,7 +261,7 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
     }
     setJoining(true);
     setError("");
-    setNotice("");
+    setNotice(undefined);
     try {
       const response = await post("/api/rooms", body, describe);
       const result = await response.json() as { roomId: string };
@@ -357,12 +361,12 @@ export function ScreeningRoom({ initialRoom }: { initialRoom?: string }) {
       </section>
 
       {room ? (
-        <RoomPanel room={room} identityName={identity?.name} isHost={isHost} send={send} quality={quality} onQuality={setQuality} profile={profile} replyRequest={replyRequest} />
+        <RoomPanel room={room} identityName={identity?.name} isHost={isHost} send={send} onLeft={() => backToJoin("room.left")} quality={quality} onQuality={setQuality} profile={profile} replyRequest={replyRequest} />
       ) : (
         <aside className="sheet" aria-labelledby="join-title">
           <h2 id="join-title">{roomId ? t("join.title.link") : t("join.title.new")}</h2>
           <p className="sheet-lede">{roomId ? t("join.lede.link") : t("join.lede.new")}</p>
-          {notice && connection === "join" && <p className="room-error" role="alert">{notice}</p>}
+          {notice && connection === "join" && <p className={notice.bad ? "room-error" : "sheet-note"} role={notice.bad ? "alert" : "status"}>{notice.text}</p>}
           {connection === "checking" ? <p role="status" className="sheet-note">{t("join.checking")}</p> : null}
           {connection === "unavailable" ? (
             <>

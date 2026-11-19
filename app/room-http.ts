@@ -42,6 +42,7 @@ export function readCommand(body: Record<string, unknown>): RoomCommand {
     throw new RoomError(400, "err.chat.invalid");
   }
   if (body.type === "nudge") return { type: "nudge" };
+  if (body.type === "leave") return { type: "leave" };
   if (body.type === "buffering" && typeof body.on === "boolean") return { type: "buffering", on: body.on };
   if (body.type === "health" && (body.level === "ok" || body.level === "struggling")) return { type: "health", level: body.level };
   if (body.type === "load" && isMediaId(body.mediaId)) return { type: "load", mediaId: body.mediaId };

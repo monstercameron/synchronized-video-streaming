@@ -38,11 +38,13 @@ const ChatMessage = memo(function ChatMessage({ message, author, own, grouped, n
   );
 });
 
-export function RoomPanel({ room, identityName, isHost, send, quality, onQuality, profile, replyRequest }: {
+export function RoomPanel({ room, identityName, isHost, send, onLeft, quality, onQuality, profile, replyRequest }: {
   room: RoomSnapshot;
   identityName?: string;
   isHost: boolean;
   send: (command: RoomCommand) => Promise<void>;
+  /** Called once leaving the room has worked. */
+  onLeft: () => void;
   quality: Quality;
   onQuality: (quality: Quality) => void;
   profile: DeviceProfile;
@@ -62,6 +64,21 @@ export function RoomPanel({ room, identityName, isHost, send, quality, onQuality
   const [invite, setInvite] = useState("");
   const [copied, setCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
+  // Leaving asks for a second tap, and says what it means for the host.
+  const [leaveStep, setLeaveStep] = useState<"idle" | "confirm" | "busy">("idle");
+  const [leaveError, setLeaveError] = useState("");
+  useEffect(() => {
+    if (leaveStep !== "confirm") return;
+    const timer = setTimeout(() => setLeaveStep("idle"), 5000);
+    return () => clearTimeout(timer);
+  }, [leaveStep]);
+  async function leave() {
+    if (leaveStep === "busy") return;
+    if (leaveStep === "idle") { setLeaveStep("confirm"); setLeaveError(""); return; }
+    setLeaveStep("busy");
+    try { await send({ type: "leave" }); onLeft(); }
+    catch (reason) { setLeaveError(reason instanceof Error ? reason.message : t("err.request.failed")); setLeaveStep("idle"); }
+  }
   const [seenId, setSeenId] = useState(lastId);
   const [atBottom, setAtBottom] = useState(true);
   const [toast, setToast] = useState<Toast>();
@@ -229,6 +246,10 @@ export function RoomPanel({ room, identityName, isHost, send, quality, onQuality
             ))}
           </ul>
           <p className="sheet-note">{isHost ? t("people.signedInHost", { name: identityName ?? "" }) : t("people.signedInViewer", { name: identityName ?? "" })}</p>
+          <button className="btn video-delete leave-room" type="button" data-confirm={leaveStep !== "idle"} disabled={leaveStep === "busy"} onClick={() => void leave()}>
+            {leaveStep === "idle" ? t("leave.button") : leaveStep === "busy" ? t("leave.busy") : isHost && room.members.length > 1 ? t("leave.confirmHost") : t("leave.confirm")}
+          </button>
+          {leaveError && <p className="room-error" role="alert">{leaveError}</p>}
         </div>
       )}
     </aside>

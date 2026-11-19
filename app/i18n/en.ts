@@ -456,6 +456,11 @@ export const en = {
   "admin.err.action": "That did not work.",
   "room.kicked": "The admin removed you from the room.",
   "room.closed": "The admin closed this room.",
+  "leave.button": "Leave room",
+  "leave.confirm": "Tap again to leave",
+  "leave.confirmHost": "You are the host. Tap again to leave: the next person becomes host",
+  "leave.busy": "Leaving…",
+  "room.left": "You left the room.",
   // @@END
 } as const;
 

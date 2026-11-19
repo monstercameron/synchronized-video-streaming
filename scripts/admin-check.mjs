@@ -106,6 +106,42 @@ check("the admin can close a room", r.status === 200 && !r.json?.rooms.some(x =>
 r = await guest.call(`/api/rooms/${roomId}`);
 check("the closed room is gone for its host", r.status === 401, JSON.stringify(r));
 
+// --- leaving a room by choice ---
+const A = person(), B = person(), C = person();
+const made2 = await A.call("/api/rooms", { method: "POST", body: { name: "Anna", code: `leaving${tag}` } });
+const rid = made2.json?.roomId;
+await B.call("/api/rooms", { method: "POST", body: { name: "Ben", roomId: rid } });
+await C.call("/api/rooms", { method: "POST", body: { name: "Cy", roomId: rid } });
+const seen = [];
+const abort2 = new AbortController();
+const stream2 = await fetch(`${base}/api/rooms/${rid}/events?since=0`, { headers: { Cookie: `screening-session=${B.jar["screening-session"]}`, "X-Forwarded-For": "10.9.8.8" }, signal: abort2.signal });
+const reading2 = (async () => {
+  try {
+    const decoder = new TextDecoder();
+    for await (const chunk of stream2.body) {
+      for (const piece of decoder.decode(chunk).split("\n\n")) { const m = /^event: (\w+)/m.exec(piece); if (m) seen.push(m[1]); }
+    }
+    seen.push("(ended)");
+  } catch { /* aborted */ }
+})();
+await new Promise(resolve => setTimeout(resolve, 300));
+r = await B.call(`/api/rooms/${rid}`, { method: "POST", body: { type: "leave" } });
+check("a person can leave a room", r.status === 204, JSON.stringify(r));
+await new Promise(resolve => setTimeout(resolve, 300));
+check("the person who left is told, then their stream ends", seen.includes("left") && !seen.includes("kicked") && seen.includes("(ended)"), seen.join(","));
+r = await B.call(`/api/rooms/${rid}`);
+check("they are no longer in the room", r.status === 401, JSON.stringify(r));
+r = await admin.call("/api/admin/login", { method: "POST", body: { password } });
+let list = (await admin.call("/api/admin")).json?.rooms.find(x => x.id === rid);
+check("the others are still in it", list?.members.length === 2, JSON.stringify(list));
+r = await A.call(`/api/rooms/${rid}`, { method: "POST", body: { type: "leave" } });
+list = (await admin.call("/api/admin")).json?.rooms.find(x => x.id === rid);
+check("when the host leaves, the next person becomes host", r.status === 204 && list?.members.length === 1 && list.members[0].host === true && list.members[0].name === "Cy", JSON.stringify(list));
+r = await C.call(`/api/rooms/${rid}`, { method: "POST", body: { type: "leave" } });
+list = (await admin.call("/api/admin")).json?.rooms.find(x => x.id === rid);
+check("when the last person leaves, the room is gone", r.status === 204 && !list, JSON.stringify(list));
+abort2.abort(); await reading2;
+
 // --- locking again ---
 r = await admin.call("/api/admin", { method: "POST", body: { type: "lock" } });
 check("the admin can lock the site", r.status === 200 && r.json?.open === false, JSON.stringify(r).slice(0, 200));
