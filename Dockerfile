@@ -9,7 +9,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+# git does not keep empty folders, and the app has no static files of its own: make sure the folder exists for the copy below.
+RUN mkdir -p public && npm run build
 
 # ---- run -----------------------------------------------------------------------------------------
 FROM node:24-bookworm-slim AS run
