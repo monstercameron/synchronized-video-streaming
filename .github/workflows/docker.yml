@@ -20,6 +20,14 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Check the release version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            printf 'Tag %s must match package.json version %s as v%s.\n' "$GITHUB_REF_NAME" "$version" "$version" >&2
+            exit 1
+          fi
       - run: npm ci
       - run: npm run typecheck
       - run: npm run i18n:check
@@ -45,8 +53,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha
             type=semver,pattern={{version}}
       - name: Build (and push unless this is a pull request)
@@ -64,9 +73,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          flavor: suffix=-bun,onlatest=true
+          flavor: |
+            latest=false
+            suffix=-bun,onlatest=true
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha
             type=semver,pattern={{version}}
       - name: Build the Bun variant (tags ending in -bun)
@@ -80,3 +91,23 @@ jobs:
           labels: ${{ steps.meta-bun.outputs.labels }}
           cache-from: type=gha,scope=bun
           cache-to: type=gha,mode=max,scope=bun
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            exit 0
+          fi
+          flags=()
+          if [[ "${GITHUB_REF_NAME%%+*}" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "${flags[@]}"

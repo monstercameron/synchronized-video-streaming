@@ -18,15 +18,15 @@ Videos and the database live in a folder on the droplet (`/srv/screening`), not 
 
 ## 1. The image (automatic)
 
-[`.github/workflows/docker.yml`](../.github/workflows/docker.yml) runs on every push to `main`: it type-checks, checks the
-language files, builds the [`Dockerfile`](../Dockerfile) and publishes:
+[`.github/workflows/docker.yml`](../.github/workflows/docker.yml) checks pushes to `main` and release tags, then builds the
+Node and Bun images.
 
 | Tag | Meaning |
 | --- | --- |
-| `latest` | the newest `main` |
+| `latest` | the newest build from `main` |
 | `sha-abc1234` | one exact commit (use it to roll back) |
 | `latest-bun`, `sha-abc1234-bun`, `1.2.3-bun` | the same, built from `Dockerfile.bun` to run on Bun |
-| `1.2.3` | a release, when you push a git tag such as `v1.2.3` |
+| `1.2.3` | the Node image for Git tag `v1.2.3` |
 
 Pull requests build the image but do not publish it. Only `linux/amd64` is built, which is what DigitalOcean droplets are.
 
@@ -83,17 +83,43 @@ docker compose run --rm -v "$PWD/incoming:/incoming:ro" app npm run media:prepar
 Preparing a long film uses much more memory than watching one does. If the container is killed, prepare the file on your own
 computer and upload the result. Disk is the real limit on a small droplet: `MEDIA_QUOTA_GB` caps the media folder.
 
-## 5. Updating and rolling back
+## 5. Releasing, deploying and rolling back
+
+Run `npm version patch`, `npm version minor` or `npm version major` from a clean `main` checkout. npm updates the manifest
+and lockfile, commits the change and creates the `vX.Y.Z` tag. Push `main` and the new tag. CI checks that the tag matches
+`package.json`, publishes both versioned images, then creates the [GitHub release](https://github.com/monstercameron/synchronized-video-streaming/releases). Only `main` updates
+the rolling `latest` and `latest-bun` tags.
+
+For production, set `IMAGE` in `/opt/screening/.env` to the chosen versioned image. Pin its registry digest too if the
+deployment must reproduce the exact image bytes. Keep the previous image reference for rollback. For the shared droplet,
+use the commands below. For the two-container setup, omit `-f compose.shared-host.yaml`.
 
 ```bash
 cd /opt/screening
-git pull                                 # only needed when compose.yaml or deploy/docker changed
-docker compose pull && docker compose up -d
-docker image prune -f                    # clear old images, which take disk space
+docker compose -f compose.shared-host.yaml pull app
+docker compose -f compose.shared-host.yaml up -d --no-deps --wait app
+cid=$(docker compose -f compose.shared-host.yaml ps -q app)
+docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}} {{.State.Health.Status}}' "$cid"
+docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$(docker inspect --format '{{.Image}}' "$cid")"
 ```
 
-To roll back, set `IMAGE=ghcr.io/monstercameron/synchronized-video-streaming:sha-<older commit>` in `.env` and run
-`docker compose up -d`. Back up `/srv/screening/screening.sqlite` (rooms and viewers) if you care about it; it is small.
+Verify the container is healthy, its revision matches the release tag and the public site responds. Record that release in
+GitHub's [Deployments history](https://github.com/monstercameron/synchronized-video-streaming/deployments) after the checks. From the repository checkout, this example records
+`v0.1.1` using the image digest printed above and the live site URL.
+
+```bash
+tag=v0.1.1
+image_digest='ghcr.io/monstercameron/synchronized-video-streaming@sha256:REPLACE_WITH_RUNNING_DIGEST'
+site='https://watch.example.com/'
+deployment=$(gh api 'repos/{owner}/{repo}/deployments' --method POST --input - --jq .id <<EOF
+{"ref":"$tag","task":"record","environment":"production","production_environment":true,"auto_merge":false,"description":"Verified release $tag","payload":{"image":"$image_digest"}}
+EOF
+)
+gh api "repos/{owner}/{repo}/deployments/$deployment/statuses" -f state=success -f environment_url="$site"
+```
+
+To roll back, restore the previous `IMAGE` in `.env` and rerun the pull and update commands. Back up
+`/srv/screening/screening.sqlite` before updating.
 
 ## Shared droplet (Nginx and other sites already there)
 
