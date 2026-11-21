@@ -156,8 +156,10 @@ export type RoomCommand =
   | { type: "buffering"; on: boolean }
   | { type: "chat"; text: string }
   | { type: "react"; emoji: string }
-  /** This person leaves the room (and is told it worked by the answer, not by an event). */
+  /** This person leaves the room. */
   | { type: "leave" };
+
+export type OwnedRoom = { id: string; people: number };
 
 /** Random room IDs are exactly 22 characters, so a chosen code (4 to 20) can never be mistaken for one. */
 const randomRoomId = /^[A-Za-z0-9_-]{22}$/;

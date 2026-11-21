@@ -9,13 +9,15 @@ import { rovingRef } from "./roving";
 import { isRotatedView, landscapePhoneQuery } from "./screen-layout";
 import dynamic from "next/dynamic";
 import { RoomPanel } from "./room-panel";
+import { LeaveRoomButton, OwnedRooms } from "./room-exit";
 import { TopbarTitle } from "./topbar-title";
 import { usePlaybackQuality } from "./use-playback-quality";
 import { VideoPlayer } from "./video-player";
-import { DefaultPasswordNotice, useDefaultPasswordNotice } from "./admin-ui";
+import { DefaultPasswordNotice, ManageAccessLink, useDefaultPasswordNotice } from "./admin-ui";
 import { Failure, LanguageSwitch, problemOf, useI18n, type MessageKey, type Problem } from "./i18n";
 import { captionLabel } from "./i18n/caption-label";
 import { openRoomStream } from "./room-stream";
+import { checkRoomEntry, watchSiteAccess } from "./site-access-client";
 import { useKeyboardLayout } from "./use-keyboard-layout";
 import { applyPatch, cleanCodeInput, isCustomCode, isRoomId, mediaUrl, normalizeRoomId, type Reaction, type RoomCommand, type RoomMember, type RoomMessage, type RoomSnapshot, type RoomState, type StatePatch } from "./room-shared";
 
@@ -46,7 +48,9 @@ function mergeMessages(current: RoomMessage[], incoming?: RoomMessage[]) {
   return fresh.length ? [...current, ...fresh].sort((a, b) => a.id - b.id).slice(-100) : current;
 }
 
-export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string; roomGone?: boolean }) {
+export function ScreeningRoom({ initialRoom, roomGone, initialSiteOpen, lockEnabled }: {
+  initialRoom?: string; roomGone?: boolean; initialSiteOpen: boolean; lockEnabled: boolean;
+}) {
   countRender("room");
   const i18n = useI18n();
   const { t, say, locale } = i18n;
@@ -56,6 +60,7 @@ export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string;
   useEffect(() => { i18nRef.current = i18n; });
   const [roomId, setRoomId] = useState(initialRoom);
   const [room, setRoom] = useState<RoomSnapshot>();
+  const [siteOpen, setSiteOpen] = useState(initialSiteOpen);
   // A link whose room is already known to be closed (or that is not shaped like a room at all) goes straight to the "not open" screen.
   const [goneRoom, setGoneRoom] = useState(roomGone || (initialRoom && !isRoomId(initialRoom)) ? initialRoom : undefined);
   const [connection, setConnection] = useState<Connection>(goneRoom ? "gone" : initialRoom ? "checking" : "join");
@@ -80,10 +85,8 @@ export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string;
     if (key === "room.left" && !was) return;
     latestRoom.current = undefined;
     if (key === "room.left") {
-      // The room closes when its last person leaves. Say so, and open the form on "Start a room" with the same code typed, since
-      // joining that code would only say that no room has it. Otherwise it most likely still exists and someone who left on purpose
-      // wants to come back: open "Join with a code" with the code typed.
-      const gone = closed ?? (was ? was.members.length <= 1 : false);
+      // Older rooms without an owner can still close automatically. Use the server's result, even when this was the last viewer.
+      const gone = closed === true;
       setNotice({ key: gone ? "room.leftLast" : "room.left", bad: false });
       setMode(gone ? "start" : "join");
       if (was && isCustomCode(was.id)) setCode(was.id);
@@ -111,6 +114,27 @@ export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string;
   const { quality, setQuality, profile } = usePlaybackQuality();
   const latestRoom = useRef<RoomSnapshot>(undefined);
   useEffect(() => { latestRoom.current = room; });
+
+  // A lock affects the join screen, but people in a room can keep watching.
+  useEffect(() => {
+    if (room || joining || connection === "checking" || connection === "connecting") return;
+    const controller = new AbortController();
+    let pending = false;
+    const check = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const access = await checkRoomEntry(roomId, controller.signal);
+        if (controller.signal.aborted || !access) return;
+        if (!access.open) window.location.reload();
+        else setSiteOpen(access.siteOpen);
+      } catch { /* A failed check says nothing about whether the site is locked. */ }
+      finally { pending = false; }
+    };
+    const timer = setInterval(() => { if (!document.hidden) void check(); }, 8000);
+    const unwatch = watchSiteAccess(() => void check());
+    return () => { controller.abort(); clearInterval(timer); unwatch(); };
+  }, [room, roomId, joining, connection]);
 
   // A reaction arrives as its own tiny event and goes straight to the screen. It never touches room
   // state, so a burst of emoji does not re-render the chat or the player.
@@ -298,7 +322,9 @@ export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string;
       else setRoomId(result.roomId);
     } catch (reason) {
       const problem = problemOf(reason, "join.err.generic");
-      if (roomId && problem.payload?.code === "err.room.notFound") {
+      if (problem.payload?.code === "err.locked") {
+        window.location.reload();
+      } else if (roomId && problem.payload?.code === "err.room.notFound") {
         // The room closed since the link was made. Say so and offer a way forward, not a form that can only fail again.
         setGoneRoom(roomId);
         setConnection("gone");
@@ -331,11 +357,14 @@ export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string;
   const media = room?.media;
   const currentRoomId = room?.id;
   const send = useCallback(async (command: RoomCommand) => { await post(`/api/rooms/${currentRoomId}`, command); }, [currentRoomId]);
-  /** Leave the room. The answer says whether the room closed because this person was the last one in it. */
   const leave = useCallback(async () => {
     const response = await post(`/api/rooms/${currentRoomId}`, { type: "leave" } satisfies RoomCommand);
-    return !!(await response.json().catch(() => null) as { closed?: boolean } | null)?.closed;
-  }, [currentRoomId]);
+    const { closed } = await response.json() as { closed: boolean };
+    backToJoin("room.left", closed);
+  }, [currentRoomId, backToJoin]);
+  const leaveControl = useMemo(() => room ? (
+    <LeaveRoomButton key={room.id} onLeave={leave} transfersHost={isHost && room.members.length > 1} />
+  ) : null, [currentRoomId, leave, isHost, room?.members.length]);
   const playback = room?.playback;
   const pausedBy = room?.pausedBy;
   const wantPlay = room?.wantPlay;
@@ -390,6 +419,7 @@ export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string;
             {live ? t("status.live") : connection === "reconnecting" ? t("status.reconnecting") : t("status.connecting")}
           </span>
         )}
+        {leaveControl}
       </header>
 
       {detailsOpen && room && media && (
@@ -409,10 +439,11 @@ export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string;
             poster={media.hasPoster ? mediaUrl(room.id, media, `poster?v=${media.version}`) : undefined}
             captions={captions} lite={profile.lowEnd}
             room={playerRoom}
-            overlay={reactionLayer} onChat={startReply}
+            overlay={reactionLayer} onChat={startReply} leaveControl={leaveControl}
           />
         ) : (
           <div className="stage-empty" data-join={!room}>
+            {leaveControl && <div className="player-leave">{leaveControl}</div>}
             <span className="room-mark" aria-hidden="true" />
             <p>
               {!room ? t("stage.joinToWatch")
@@ -424,15 +455,25 @@ export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string;
       </section>
 
       {room ? (
-        <RoomPanel room={room} identityName={identity?.name} isHost={isHost} send={send} onLeave={leave} onLeft={closed => backToJoin("room.left", closed)} quality={quality} onQuality={setQuality} profile={profile} replyRequest={replyRequest} />
+        <RoomPanel room={room} identityName={identity?.name} isHost={isHost} send={send} quality={quality} onQuality={setQuality} profile={profile} replyRequest={replyRequest} />
       ) : (
         <aside className="sheet" aria-labelledby="join-title">
           <h1 id="join-title" ref={goneTitleRef} tabIndex={-1}>{connection === "gone" ? t("join.gone.title") : roomId ? t("join.title.link") : t("join.title.new")}</h1>
           {connection !== "gone" && <p className="sheet-lede">{roomId ? t("join.lede.link") : t("join.lede.new")}</p>}
+          <div className="lobby-access">
+            <div className="lobby-access-status" role="status">
+              <span>{t("admin.site")}</span>
+              <strong className="admin-state" data-open={siteOpen}><i aria-hidden="true" />
+                {t(!lockEnabled ? "access.alwaysOpen" : siteOpen ? "access.open" : "access.locked")}
+              </strong>
+            </div>
+            <ManageAccessLink />
+          </div>
           {/* A guest arriving by a link is told which room it is for (a private room has no code worth showing). */}
           {roomId && connection !== "gone" && <p className="sheet-lede join-target">{isCustomCode(roomId) ? t("join.linkCode", { code: roomId }) : t("join.linkPrivate")}</p>}
           {defaultPassword.show && <DefaultPasswordNotice onDismiss={defaultPassword.dismiss} />}
           {notice && connection === "join" && <p ref={noticeRef} tabIndex={-1} className={notice.bad ? "room-error sheet-status" : "sheet-status"} role={notice.bad ? "alert" : "status"}>{t(notice.key)}</p>}
+          <OwnedRooms />
           {connection === "checking" ? <p role="status" className="sheet-note">{t("join.checking")}</p> : null}
           {connection === "gone" ? (
             <>
@@ -503,7 +544,6 @@ export function ScreeningRoom({ initialRoom, roomGone }: { initialRoom?: string;
             </form>
           ) : null}
           <LanguageSwitch />
-          <p className="sheet-note"><a className="admin-link" href="/admin">{t("admin.manage")}</a></p>
         </aside>
       )}
       <input ref={focusProxy} className="focus-proxy" aria-hidden="true" tabIndex={-1} readOnly inputMode="text" />

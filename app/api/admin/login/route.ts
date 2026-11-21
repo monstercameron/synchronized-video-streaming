@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { adminCookie, assertCanTryPassword, forgetWrongPasswords, newAdminToken, passwordMatches, recordWrongPassword, usingDefaultPassword, warnIfDefaultPassword } from "../../../admin-auth";
+import { adminCookie, adminCookieOptions, assertCanTryPassword, forgetWrongPasswords, newAdminToken, passwordMatches, recordWrongPassword, usingDefaultPassword, warnIfDefaultPassword } from "../../../admin-auth";
 import { noStore, readBody, roomResponse } from "../../../room-http";
 import { RoomError } from "../../../room-store";
 import { isOpen, setOpen } from "../../../site-lock";
@@ -23,10 +23,7 @@ export async function POST(request: NextRequest) {
     if (body.open === true) setOpen(true);
     const token = newAdminToken();
     const response = NextResponse.json({ ok: true, open: isOpen(), defaultPassword: usingDefaultPassword() }, { headers: noStore });
-    response.cookies.set(adminCookie, token.value, {
-      path: "/", httpOnly: true, sameSite: "lax", maxAge: token.maxAge,
-      secure: request.nextUrl.protocol === "https:" || request.headers.get("x-forwarded-proto") === "https",
-    });
+    response.cookies.set(adminCookie, token.value, { ...adminCookieOptions(request), maxAge: token.maxAge });
     return response;
   } catch (error) {
     return roomResponse(error);

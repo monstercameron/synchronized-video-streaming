@@ -170,9 +170,19 @@ check("the others are still in it", list?.members.length === 2, JSON.stringify(l
 r = await A.call(`/api/rooms/${rid}`, { method: "POST", body: { type: "leave" } });
 list = (await admin.call("/api/admin")).json?.rooms.find(x => x.id === rid);
 check("when the host leaves, the next person becomes host", r.status === 200 && r.json?.closed === false && list?.members.length === 1 && list.members[0].host === true && list.members[0].name === "Cy", JSON.stringify(list));
+const owned = await A.call("/api/rooms");
+check("the creator's room is still listed after leaving", owned.json?.rooms?.some(room => room.id === rid && room.people === 1));
+check("a successor host cannot close the creator's room", (await C.call(`/api/rooms/${rid}`, { method: "DELETE" })).status === 404);
 r = await C.call(`/api/rooms/${rid}`, { method: "POST", body: { type: "leave" } });
 list = (await admin.call("/api/admin")).json?.rooms.find(x => x.id === rid);
-check("when the last person leaves, the room is gone, and they are told so", r.status === 200 && r.json?.closed === true && !list, JSON.stringify(list));
+check("the last person can leave an owned room open", r.status === 200 && r.json?.closed === false && list?.members.length === 0, JSON.stringify(list));
+await C.call("/api/rooms", { method: "POST", body: { name: "Cy", roomId: rid } });
+list = (await admin.call("/api/admin")).json?.rooms.find(x => x.id === rid);
+check("the first person back becomes playback host", list?.members.length === 1 && list.members[0].host === true);
+await admin.call("/api/admin", { method: "POST", body: { type: "lock" } });
+check("the creator can close from outside the room while the site is locked", (await A.call(`/api/rooms/${rid}`, { method: "DELETE" })).status === 204);
+check("closing the room removes it for its remaining viewer", (await C.call(`/api/rooms/${rid}`)).status === 401);
+await admin.call("/api/admin", { method: "POST", body: { type: "open" } });
 abort2.abort(); await reading2;
 
 // --- a pending "Ask host to play" must not outlive the person who asked ---
@@ -212,11 +222,21 @@ const made = await returning.call("/api/rooms", { method: "POST", body: { name: 
 await admin.call("/api/admin", { method: "POST", body: { type: "lock" } });
 r = await returning.call("/api/rooms", { method: "POST", body: { name: "Back", roomId: made.json.roomId } });
 check("someone already in a room can still return to it while locked", r.status === 201, JSON.stringify(r));
+const entry = `/api/open?entry=1&room=${made.json.roomId}`;
+check("the entry check recognizes a returning member", (await returning.call(entry)).json?.open === true);
+check("the entry check keeps a new guest out", (await person().call(entry)).json?.open === false);
+check("the entry check recognizes a signed-in admin", (await admin.call("/api/open?entry=1")).json?.open === true);
 
 // --- sign out, rate limit ---
+const independent = person();
+await independent.call("/api/admin/login", { method: "POST", body: { password } });
+const oldAdminToken = admin.jar["screening-admin"];
 r = await admin.call("/api/admin/logout", { method: "POST", body: {} });
-r = await admin.call("/api/admin");
-check("signing out ends the admin session", r.status === 401, JSON.stringify(r));
+check("signing out clears the admin cookie", r.status === 200 && !admin.jar["screening-admin"]);
+admin.jar["screening-admin"] = oldAdminToken;
+check("the server rejects the former admin session", (await admin.call("/api/admin")).status === 401);
+check("another admin sign-in stays valid", (await independent.call("/api/admin")).status === 200);
+check("signing out leaves the site locked", (await person().call("/api/open")).json?.open === false);
 const brute = person();
 let codes = [];
 for (let i = 0; i < 8; i++) codes.push((await brute.call("/api/admin/login", { method: "POST", body: { password: "nope" + i } })).status);

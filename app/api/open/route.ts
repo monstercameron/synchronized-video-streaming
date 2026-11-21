@@ -1,12 +1,20 @@
-import { noStore } from "../../room-http";
-import { isOpen } from "../../site-lock";
+import type { NextRequest } from "next/server";
+import { adminCookie } from "../../admin-auth";
+import { cookieName, noStore } from "../../room-http";
+import { canEnterLockedSite, isOpen } from "../../site-lock";
 
 export const runtime = "nodejs";
 
 /**
- * Whether the site is open to guests right now, and nothing else. The lock screen asks this every few seconds so a friend
- * waiting there is let in as soon as the admin opens the site. It needs no sign-in and answers one boolean to anyone.
+ * The public status is one boolean. Entry checks also honor the caller's admin or returning-room session so a waiting
+ * browser can show the same screen that a fresh page request would show.
  */
-export function GET() {
-  return Response.json({ open: isOpen() }, { headers: noStore });
+export function GET(request: NextRequest) {
+  const query = request.nextUrl.searchParams;
+  const siteOpen = isOpen();
+  if (!query.has("entry")) return Response.json({ open: siteOpen }, { headers: noStore });
+  const open = siteOpen || canEnterLockedSite(
+    request.cookies.get(adminCookie)?.value, query.get("room") ?? undefined, request.cookies.get(cookieName)?.value,
+  );
+  return Response.json({ open, siteOpen }, { headers: noStore });
 }

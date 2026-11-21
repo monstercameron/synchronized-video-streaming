@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { ConfirmButton } from "./confirm-button";
+import { OwnedRooms } from "./room-exit";
 import { Failure, LanguageSwitch, problemOf, useI18n, type Problem } from "./i18n";
 import type { ApiError } from "./i18n/core";
 import { useListPresence } from "./motion";
 import { isCustomCode } from "./room-shared";
+import { checkRoomEntry, notifySiteAccessChanged, watchSiteAccess } from "./site-access-client";
 import type { AdminRoom } from "./room-store";
 
 type AdminState = { open: boolean; lockEnabled: boolean; defaultPassword: boolean; rooms: AdminRoom[] };
@@ -51,6 +53,11 @@ export function DefaultPasswordNotice({ onDismiss, floating }: { onDismiss: () =
   );
 }
 
+export function ManageAccessLink() {
+  const { t } = useI18n();
+  return <a className="btn manage-access" href="/admin#admin-site">{t("access.manage")}</a>;
+}
+
 /**
  * The password form. On the lock screen (`mode="lock"`) a correct password also opens the site for everyone else; on the
  * management page (`mode="admin"`) it only signs in.
@@ -63,29 +70,33 @@ export function PasswordGate({ mode, room }: { mode: "lock" | "admin"; room?: st
   const [error, setError] = useState<Problem>();
   // A friend waiting on the lock screen is let in by itself: the page asks every few seconds whether the site has opened.
   const [checking, setChecking] = useState(false);
-  const [stillClosed, setStillClosed] = useState(false);
+  const [checkResult, setCheckResult] = useState<"locked" | "failed">();
   const passwordField = useRef<HTMLInputElement>(null);
 
   const check = useCallback(async (manual: boolean) => {
-    if (manual) { setChecking(true); setStillClosed(false); }
+    if (manual) { setChecking(true); setCheckResult(undefined); }
     // A manual check shows "Checking…" for a moment even when the answer is instant, so pressing it again is seen to do something.
     const minimum = manual ? new Promise(resolve => setTimeout(resolve, 700)) : undefined;
     try {
-      const response = await fetch("/api/open", { cache: "no-store" });
+      const access = await checkRoomEntry(room);
       await minimum;
-      const answer = await response.json().catch(() => null) as { open?: boolean } | null;
-      if (answer?.open) { window.location.reload(); return; }
-      if (manual) setStillClosed(true);
-    } catch { await minimum; if (manual) setStillClosed(true); }
+      if (access?.open) { window.location.reload(); return; }
+      if (manual) setCheckResult(access?.siteOpen === false ? "locked" : "failed");
+    } catch { await minimum; if (manual) setCheckResult("failed"); }
     finally { if (manual) setChecking(false); }
-  }, []);
+  }, [room]);
 
   useEffect(() => {
-    if (mode !== "lock") return;
+    if (mode === "admin") {
+      return watchSiteAccess(() => {
+        void fetch("/api/admin", { cache: "no-store" }).then(response => {
+          if (response.ok) window.location.reload();
+        }).catch(() => undefined);
+      });
+    }
     const timer = setInterval(() => { if (!document.hidden) void check(false); }, 8000);
-    const back = () => { if (!document.hidden) void check(false); };
-    document.addEventListener("visibilitychange", back);
-    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", back); };
+    const unwatch = watchSiteAccess(() => void check(false));
+    return () => { clearInterval(timer); unwatch(); };
   }, [mode, check]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -101,6 +112,7 @@ export function PasswordGate({ mode, room }: { mode: "lock" | "admin"; room?: st
       if (mode === "lock" && result?.defaultPassword) {
         try { sessionStorage.setItem(defaultPasswordFlag, "1"); } catch { /* Storage can be blocked. */ }
       }
+      notifySiteAccessChanged();
       // The page is rendered on the server according to who is signed in, so load it again.
       window.location.reload();
     } catch (reason) {
@@ -132,17 +144,21 @@ export function PasswordGate({ mode, room }: { mode: "lock" | "admin"; room?: st
         {mode === "lock" && room && <p className="sheet-lede join-target">{isCustomCode(room) ? t("lock.invited", { code: room }) : t("lock.invitedPrivate")}</p>}
         {mode === "lock" ? (
           <>
-            <button className="btn gate-check" type="button" onClick={() => void check(true)} disabled={checking}>{checking ? t("lock.busy") : t("lock.check")}</button>
-            <p className="sheet-note gate-status" role="status">{stillClosed ? t("lock.stillClosed") : ""}</p>
-            {/* Friends have nothing to enter here; the password is for the admin, so it is folded away. */}
+            <div className="gate-access-actions">
+              <ManageAccessLink />
+              <button className="btn gate-check" type="button" onClick={() => void check(true)} disabled={checking}>{checking ? t("lock.busy") : t("lock.check")}</button>
+            </div>
+            <p className="sheet-note gate-status" role="status">
+              {checkResult === "locked" ? t("lock.stillClosed") : checkResult === "failed" ? t("lock.checkFailed") : ""}
+            </p>
             <details className="fold gate-admin" onToggle={event => { if (event.currentTarget.open) passwordField.current?.focus(); }}>
               <summary><span>{t("lock.admin")}</span></summary>
               <div className="fold-body">
                 {form}
                 <p className="fold-note">{t("lock.note")}</p>
-                <p className="fold-note">{t("lock.note2")}</p>
               </div>
             </details>
+            <OwnedRooms />
           </>
         ) : (
           <>
@@ -164,26 +180,41 @@ export function AdminPanel() {
   // A button tapped once asks for a second tap within a few seconds before it does anything that cannot be undone.
   const [confirming, setConfirming] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const actionInFlight = useRef(false);
+  const poll = useRef<AbortController>(null);
   // Rooms the admin opened or folded by hand (the rest follow the "few rooms are open" rule).
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const apply = useCallback(async (response: Response, fallback: "admin.err.load" | "admin.err.action") => {
+  const apply = useCallback(async (response: Response, fallback: "admin.err.load" | "admin.err.action", signal?: AbortSignal) => {
     const payload = await response.json().catch(() => null);
-    if (response.status === 401) { window.location.reload(); return; }
-    if (!response.ok) throw new Failure(payload as ApiError | null, fallback);
+    if (signal?.aborted) return false;
+    if (response.status === 401) { window.location.reload(); return false; }
+    if (!response.ok || !payload) throw new Failure(payload as ApiError | null, fallback);
     setState(payload as AdminState);
-    setError(undefined);
+    const nextLockAction = payload.open ? "lock" : "open";
+    setConfirming(current => (current === "lock" || current === "open") && current !== nextLockAction ? undefined : current);
+    if (fallback === "admin.err.load") setError(current => current?.key === fallback ? undefined : current);
+    return true;
   }, []);
 
-  const load = useCallback(async () => {
-    try { await apply(await fetch("/api/admin", { cache: "no-store" }), "admin.err.load"); }
-    catch (reason) { setError(problemOf(reason, "admin.err.load")); }
+  const load = useCallback(async (replace = false) => {
+    if (actionInFlight.current || (poll.current && !replace)) return;
+    poll.current?.abort();
+    const current = new AbortController();
+    poll.current = current;
+    try { await apply(await fetch("/api/admin", { cache: "no-store", signal: current.signal }), "admin.err.load", current.signal); }
+    catch (reason) {
+      if (!current.signal.aborted) setError(previous => previous ?? problemOf(reason, "admin.err.load"));
+    } finally {
+      if (poll.current === current) poll.current = null;
+    }
   }, [apply]);
 
   useEffect(() => {
     void load();
     const timer = setInterval(() => { if (!document.hidden) void load(); }, 4000);
-    return () => clearInterval(timer);
+    const unwatch = watchSiteAccess(() => void load(true));
+    return () => { clearInterval(timer); unwatch(); poll.current?.abort(); poll.current = null; };
   }, [load]);
 
   useEffect(() => {
@@ -193,21 +224,36 @@ export function AdminPanel() {
   }, [confirming]);
 
   async function act(key: string, body: object, needsConfirm: boolean) {
-    if (busy) return;
+    if (actionInFlight.current) return;
     if (needsConfirm && confirming !== key) { setConfirming(key); return; }
     setConfirming(undefined);
+    await runAction("admin.err.action", async () => {
+      if (await apply(await postJson("/api/admin", body), "admin.err.action") && (key === "lock" || key === "open")) notifySiteAccessChanged();
+    });
+  }
+
+  async function runAction(fallback: "admin.err.action" | "admin.err.signOut", run: () => Promise<void>) {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
+    poll.current?.abort();
+    setError(undefined);
     setBusy(true);
-    try { await apply(await postJson("/api/admin", body), "admin.err.action"); }
-    catch (reason) { setError(problemOf(reason, "admin.err.action")); }
-    finally { setBusy(false); }
+    try { await run(); }
+    catch (reason) { setError(problemOf(reason, fallback)); }
+    finally { actionInFlight.current = false; setBusy(false); }
   }
 
   async function signOut() {
-    await postJson("/api/admin/logout", {}).catch(() => undefined);
-    try { sessionStorage.removeItem(defaultPasswordFlag); } catch { /* Nothing to forget. */ }
-    window.location.reload();
+    await runAction("admin.err.signOut", async () => {
+      const response = await postJson("/api/admin/logout", {});
+      if (!response.ok) throw new Failure(await response.json().catch(() => null) as ApiError | null, "admin.err.signOut");
+      try { sessionStorage.removeItem(defaultPasswordFlag); } catch { /* Nothing to forget. */ }
+      notifySiteAccessChanged();
+      window.location.reload();
+    });
   }
 
+  const lockAction = state?.open ? "lock" : "open";
   const people = state?.rooms.reduce((total, room) => total + room.members.length, 0) ?? 0;
   // A room that was closed fades out where it was, and so does a person who was removed.
   const roomRows = useListPresence(state?.rooms ?? noRooms, room => room.id);
@@ -218,15 +264,15 @@ export function AdminPanel() {
         <h1>{t("admin.title")}</h1>
         <div className="admin-head-actions">
           <a className="btn" href="/">{t("admin.back")}</a>
-          <button className="btn" type="button" onClick={() => void signOut()}>{t("admin.signOut")}</button>
+          <button className="btn" type="button" disabled={busy} onClick={() => void signOut()}>{t("admin.signOut")}</button>
         </div>
       </header>
 
       {state?.defaultPassword && <p className="struggle-banner" role="alert">{t("admin.defaultPassword")}</p>}
       {error && <p className="room-error" role="alert">{say(error)}</p>}
 
-      <section className="admin-card" aria-labelledby="admin-site">
-        <h2 id="admin-site">{t("admin.site")}</h2>
+      <section className="admin-card" id="admin-site" aria-labelledby="admin-site-title">
+        <h2 id="admin-site-title">{t("admin.site")}</h2>
         {state ? (
           <>
             {/* A live region: when the site opens or locks (here or from another device) the new state is read out in full. */}
@@ -239,30 +285,30 @@ export function AdminPanel() {
               <>
                 <p className="sheet-note">{state.open ? t("admin.note.open") : t("admin.note.locked")}</p>
                 <ConfirmButton
-                  className="admin-lock" confirming={confirming === "lock"} disabled={busy}
+                  className="admin-lock" confirming={confirming === lockAction} disabled={busy}
                   label={state.open ? t("admin.lock") : t("admin.open")} sureLabel={t("confirm.sure")}
                   aria={state.open ? t("admin.lock") : t("admin.open")} sureAria={state.open ? t("admin.lockConfirm") : t("admin.openConfirm")}
-                  onClick={() => void act("lock", { type: state.open ? "lock" : "open" }, true)}
+                  onClick={() => void act(lockAction, { type: lockAction }, true)}
                 />
               </>
             ) : <p className="sheet-note">{t("admin.lockOff")}</p>}
+            <div className="admin-room-actions">
+              <p className="sheet-note" role="status">
+                {state.rooms.length ? t("admin.closeAllCount", { rooms: tn("admin.roomCount", state.rooms.length), people: tn("admin.people", people) }) : t("admin.rooms.none")}
+              </p>
+              <ConfirmButton
+                className="admin-close-all" confirming={confirming === "closeAll"} disabled={busy || !state.rooms.length}
+                label={t("admin.closeAll")} sureLabel={t("admin.closeAllSure")}
+                aria={t("admin.closeAll")} sureAria={t("admin.closeAllConfirm")}
+                onClick={() => void act("closeAll", { type: "closeAll" }, true)}
+              />
+            </div>
           </>
         ) : <p className="sheet-note" role="status">{t("admin.loading")}</p>}
       </section>
 
       <section className="admin-card" aria-labelledby="admin-rooms">
-        {/* "Close all" sits up here with the title (which stays in view while scrolling a long list), not at the bottom of it. */}
-        <div className="admin-card-head">
-          <h2 id="admin-rooms">{t("admin.rooms")}</h2>
-          {state && state.rooms.length > 1 && (
-            <ConfirmButton
-              className="admin-close-all" confirming={confirming === "closeAll"} disabled={busy}
-              label={t("admin.closeAll", { count: state.rooms.length, people })} sureLabel={t("admin.closeAllSure", { count: state.rooms.length })}
-              aria={t("admin.closeAll", { count: state.rooms.length, people })} sureAria={t("admin.closeAllConfirm", { count: state.rooms.length })}
-              onClick={() => void act("closeAll", { type: "closeAll" }, true)}
-            />
-          )}
-        </div>
+        <h2 id="admin-rooms">{t("admin.rooms")}</h2>
         {state && state.rooms.length === 0 && <p className="sheet-note">{t("admin.rooms.none")}</p>}
         {roomRows.map(({ item: room, key, leaving }) => {
           const label = room.custom ? room.id : `${room.id.slice(0, 6)}…`;

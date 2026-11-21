@@ -71,7 +71,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const deliver = (event: RoomEvent) => {
           try {
             if (event.type === "closed") {
-              // The admin closed the room. Say so, then hang up: this stream is done.
+              // The room was closed. Say so, then hang up: this stream is done.
               send(frame("closed", {}));
               close();
             } else if (event.type === "kick") {

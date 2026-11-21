@@ -57,12 +57,24 @@ export function database() {
         sig TEXT NOT NULL, captions TEXT NOT NULL, poster TEXT
       );
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS revoked_admin_sessions (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS media_meta (
         media_id TEXT PRIMARY KEY, data TEXT NOT NULL, fetched_at INTEGER NOT NULL, model TEXT NOT NULL
       );
     `);
     const columns = db.prepare("PRAGMA table_info(rooms)").all() as { name: string }[];
     if (!columns.some(column => column.name === "media_id")) db.exec("ALTER TABLE rooms ADD COLUMN media_id TEXT");
+    if (!columns.some(column => column.name === "owner_session_hash")) {
+      db.exec(`
+        BEGIN IMMEDIATE;
+        ALTER TABLE rooms ADD COLUMN owner_session_hash TEXT;
+        UPDATE rooms SET owner_session_hash = (
+          SELECT session_hash FROM members WHERE members.id = rooms.host_id AND members.room_id = rooms.id
+        );
+        COMMIT;
+      `);
+    }
+    db.exec("CREATE INDEX IF NOT EXISTS rooms_owner ON rooms(owner_session_hash)");
     db.prepare("UPDATE rooms SET playing = 0, revision = revision + 1 WHERE playing = 1").run();
   } catch (error) {
     db.close();

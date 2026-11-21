@@ -6,6 +6,7 @@ import { formatNumber } from "./i18n/format";
 import { ConfirmButton } from "./confirm-button";
 import { Failure, problemOf, useI18n, type Problem } from "./i18n";
 import { useListPresence } from "./motion";
+import { watchSiteAccess } from "./site-access-client";
 import { rovingRef } from "./roving";
 import type { ApiError } from "./i18n/core";
 import type { DeviceProfile } from "./device";
@@ -160,14 +161,17 @@ export function LibraryPanel({ room, isHost, send, quality, onQuality, profile }
   const [confirming, setConfirming] = useState<string>();
   const picker = useRef<HTMLInputElement>(null);
   const uploadCount = useRef(0);
+  const refreshNumber = useRef(0);
   const roomId = room.id;
 
   const refresh = useCallback(async (rescan: boolean) => {
+    const current = ++refreshNumber.current;
     setLoading(true);
     setError(undefined);
     try {
       const response = await fetch(`/api/rooms/${roomId}/library${rescan ? "?rescan=1" : ""}`, { cache: "no-store" });
       const payload = await response.json();
+      if (current !== refreshNumber.current) return;
       if (!response.ok) throw new Failure(payload, "lib.err.load");
       setItems(payload.items);
       setAdmin(!!payload.admin);
@@ -176,20 +180,17 @@ export function LibraryPanel({ room, isHost, send, quality, onQuality, profile }
       setStorage(payload.storage);
       setLimits({ maxBytes: payload.maxUploadBytes, extensions: payload.allowedUploads });
     } catch (reason) {
-      setError(problemOf(reason, "lib.err.load"));
+      if (current === refreshNumber.current) setError(problemOf(reason, "lib.err.load"));
     } finally {
-      setLoading(false);
+      if (current === refreshNumber.current) setLoading(false);
     }
   }, [roomId]);
 
   useEffect(() => { if (isHost) void refresh(false); }, [isHost, refresh]);
-  // After signing in on the management page (another tab), coming back here picks the sign-in up.
   useEffect(() => {
-    if (!isHost || admin) return;
-    const back = () => { if (!document.hidden) void refresh(false); };
-    document.addEventListener("visibilitychange", back);
-    return () => document.removeEventListener("visibilitychange", back);
-  }, [isHost, admin, refresh]);
+    if (!isHost) return;
+    return watchSiteAccess(() => void refresh(false));
+  }, [isHost, refresh]);
 
   async function choose(item: LibraryItem) {
     if (pending || item.id === room.media?.id) return;

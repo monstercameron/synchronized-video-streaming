@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { database } from "./db";
 import { translate, type MessageKey, type Params } from "./i18n/core";
 import { defaultMediaId, getMedia, toInfo } from "./media-catalog";
-import { isRoomId, playbackPosition, type MemberHealth, type Playback, type Reaction, type RoomCommand, type RoomEvent, type RoomMember, type RoomMessage, type RoomSnapshot, type RoomState, type SharedRoomState } from "./room-shared";
+import { isRoomId, playbackPosition, type MemberHealth, type OwnedRoom, type Playback, type Reaction, type RoomCommand, type RoomEvent, type RoomMember, type RoomMessage, type RoomSnapshot, type RoomState, type SharedRoomState } from "./room-shared";
 
 const runtime = globalThis as typeof globalThis & {
   screeningListeners?: Map<string, Set<(event: RoomEvent) => void>>;
@@ -167,6 +167,7 @@ export function requireMembership(id: string, token?: string): Membership {
  */
 export function joinRoom(name: string, id: string | undefined, cookie?: string, customCode?: string) {
   const token = cookie ?? randomBytes(32).toString("base64url");
+  const hash = sessionHash(token);
   const roomId = id ?? customCode ?? randomBytes(16).toString("base64url");
   const memberId = randomUUID();
   const db = database();
@@ -174,19 +175,21 @@ export function joinRoom(name: string, id: string | undefined, cookie?: string, 
   try {
     if (id) {
       getRoom(id);
-      const existing = db.prepare("SELECT id FROM members WHERE room_id = ? AND session_hash = ?").get(id, sessionHash(token));
+      const existing = db.prepare("SELECT id FROM members WHERE room_id = ? AND session_hash = ?").get(id, hash);
       const count = db.prepare("SELECT COUNT(*) AS size FROM members WHERE room_id = ?").get(id)?.size;
       if (!existing && Number(count) >= 50) throw new RoomError(409, "err.room.full");
+      if (Number(count) === 0) db.prepare("UPDATE rooms SET host_id = ?, revision = revision + 1 WHERE id = ?").run(memberId, id);
     } else {
       if (customCode && db.prepare("SELECT 1 FROM rooms WHERE id = ?").get(roomId)) {
         throw new RoomError(409, "err.code.taken");
       }
-      db.prepare("INSERT INTO rooms (id, host_id, anchor_at, media_id) VALUES (?, ?, ?, ?)").run(roomId, memberId, serverTime(), defaultMediaId());
+      db.prepare("INSERT INTO rooms (id, host_id, anchor_at, media_id, owner_session_hash) VALUES (?, ?, ?, ?, ?)")
+        .run(roomId, memberId, serverTime(), defaultMediaId(), hash);
     }
     db.prepare(`
       INSERT INTO members (id, room_id, session_hash, name) VALUES (?, ?, ?, ?)
       ON CONFLICT(room_id, session_hash) DO UPDATE SET name = excluded.name
-    `).run(memberId, roomId, sessionHash(token), name);
+    `).run(memberId, roomId, hash, name);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -474,48 +477,67 @@ function forgetMember(memberId: string) {
 
 /**
  * Remove one person from a room (the admin removing them, or `byChoice`: they chose to go). They are told, disconnected, and need to join again (their chat lines go with them). If the
- * host is removed the next person to have joined becomes the host; if nobody is left the room is closed.
+ * host is removed the next person to have joined becomes the host. A voluntary last departure leaves an owned room open and paused.
  */
 export function kickMember(roomId: string, memberId: string, byChoice = false) {
   const db = database();
   const room = getRoom(roomId);
   const target = db.prepare("SELECT id FROM members WHERE id = ? AND room_id = ?").get(memberId, roomId);
   if (!target) throw new RoomError(404, "err.admin.noMember");
-  // Someone who chooses to leave a room they are alone in closes it; they are told so, to know the code no longer works.
-  const last = Number(db.prepare("SELECT COUNT(*) AS size FROM members WHERE room_id = ?").get(roomId)?.size) === 1;
-  // Told first, while their connection still exists.
-  broadcast(roomId, { type: "kick", memberId, ...(byChoice ? { left: true, last } : {}) });
+  const owned = !!db.prepare("SELECT 1 FROM rooms WHERE id = ? AND owner_session_hash IS NOT NULL").get(roomId);
+  let empty = false;
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("DELETE FROM messages WHERE author_id = ?").run(memberId);
     db.prepare("DELETE FROM members WHERE id = ?").run(memberId);
-    if (room.hostId === memberId) {
-      const next = db.prepare("SELECT id FROM members WHERE room_id = ? ORDER BY rowid LIMIT 1").get(roomId) as { id: string } | undefined;
-      if (next) db.prepare("UPDATE rooms SET host_id = ?, revision = revision + 1 WHERE id = ?").run(next.id, roomId);
+    const next = db.prepare("SELECT id FROM members WHERE room_id = ? ORDER BY rowid LIMIT 1").get(roomId) as { id: string } | undefined;
+    empty = !next;
+    if (next && room.hostId === memberId) {
+      db.prepare("UPDATE rooms SET host_id = ?, revision = revision + 1 WHERE id = ?").run(next.id, roomId);
+    } else if (!next && byChoice && owned) {
+      const now = serverTime();
+      const position = playbackPosition({ ...room, playing: !!room.playing }, now, getMedia(room.mediaId)?.duration ?? 0);
+      db.prepare("UPDATE rooms SET host_id = '', playing = 0, position = ?, anchor_at = ?, revision = revision + 1 WHERE id = ?")
+        .run(position, now, roomId);
     }
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
   }
-  forgetMember(memberId);
-  wants.get(roomId)?.delete(memberId);
   memberLists.delete(roomId);
   for (const key of memberByToken.keys()) if (key.startsWith(`${roomId}|`)) memberByToken.delete(key);
   forgetRoom(roomId);
-  const left = db.prepare("SELECT COUNT(*) AS size FROM members WHERE room_id = ?").get(roomId)?.size;
-  if (Number(left) === 0) closeRoom(roomId);
-  else broadcast(roomId);
+  const closed = empty && (!byChoice || !owned);
+  broadcast(roomId, { type: "kick", memberId, ...(byChoice ? { left: true, last: closed } : {}) });
+  forgetMember(memberId);
+  wants.get(roomId)?.delete(memberId);
+  if (closed) closeRoom(roomId);
+  else if (!empty) broadcast(roomId);
 }
 
-/** Whether a room with this id still exists (it closes when its last person leaves). */
+/** Whether a room with this id still exists, including an empty room its owner can close. */
 export const roomExists = (roomId: string) => !!database().prepare("SELECT 1 FROM rooms WHERE id = ?").get(roomId);
+
+export function listOwnedRooms(token?: string): OwnedRoom[] {
+  if (!token) return [];
+  return database().prepare(`
+    SELECT id, (SELECT COUNT(*) FROM members WHERE room_id = rooms.id) AS people
+    FROM rooms WHERE owner_session_hash = ? ORDER BY rowid DESC
+  `).all(sessionHash(token)) as OwnedRoom[];
+}
+
+export function closeOwnedRoom(id: string, token?: string) {
+  const owned = token && isRoomId(id) && database().prepare("SELECT 1 FROM rooms WHERE id = ? AND owner_session_hash = ?")
+    .get(id, sessionHash(token));
+  if (!owned) throw new RoomError(404, "err.owner.noRoom");
+  closeRoom(id);
+}
 
 /** Close a room: everybody in it is told and disconnected, and the room, its people and its chat are deleted. */
 export function closeRoom(roomId: string) {
   const db = database();
   if (!db.prepare("SELECT 1 FROM rooms WHERE id = ?").get(roomId)) throw new RoomError(404, "err.admin.noRoom");
-  broadcast(roomId, { type: "closed" });
   const people = db.prepare("SELECT id FROM members WHERE room_id = ?").all(roomId) as { id: string }[];
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -527,6 +549,9 @@ export function closeRoom(roomId: string) {
     db.exec("ROLLBACK");
     throw error;
   }
+  const connected = listeners.get(roomId);
+  listeners.delete(roomId);
+  connected?.forEach(listener => listener({ type: "closed" }));
   for (const { id } of people) forgetMember(id);
   memberLists.delete(roomId);
   for (const key of memberByToken.keys()) if (key.startsWith(`${roomId}|`)) memberByToken.delete(key);
@@ -534,7 +559,6 @@ export function closeRoom(roomId: string) {
   lastShared.delete(roomId);
   wants.delete(roomId);
   pausers.delete(roomId);
-  listeners.delete(roomId);
 }
 
 /** Close every room. Returns how many there were. */

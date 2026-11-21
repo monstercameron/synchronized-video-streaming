@@ -1,5 +1,6 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
+import { database } from "./db";
 import { clientKey } from "./room-guard";
 import { RoomError } from "./room-store";
 
@@ -14,6 +15,12 @@ export function adminPassword() {
 export const usingDefaultPassword = () => !process.env.ADMIN_PASSWORD;
 
 export const adminCookie = "screening-admin";
+export function adminCookieOptions(request: NextRequest) {
+  return {
+    path: "/", httpOnly: true, sameSite: "lax" as const,
+    secure: request.nextUrl.protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https",
+  };
+}
 /** How long a sign-in lasts. */
 const lifetime = 12 * 60 * 60 * 1000;
 
@@ -24,21 +31,38 @@ export function passwordMatches(guess: unknown) {
   return typeof guess === "string" && timingSafeEqual(digest(guess), digest(adminPassword()));
 }
 
-// The sign-in cookie is "<expiry>.<signature>", signed with a key made from the password itself, so nothing is stored on the
-// server and changing the password signs everybody out.
-const sign = (expires: string) => createHmac("sha256", digest(`screening-admin|${adminPassword()}`)).update(expires).digest("base64url");
+// A random ID keeps separate sign-ins distinct. The password still controls which signatures are valid.
+const sign = (value: string) => createHmac("sha256", digest(`screening-admin|${adminPassword()}`)).update(value).digest("base64url");
 
 export function newAdminToken(now = Date.now()) {
-  const expires = String(now + lifetime);
-  return { value: `${expires}.${sign(expires)}`, maxAge: lifetime / 1000 };
+  const value = `${now + lifetime}.${randomBytes(16).toString("base64url")}`;
+  return { value: `${value}.${sign(value)}`, maxAge: lifetime / 1000 };
+}
+
+function signedExpiry(token: string, now: number) {
+  const [expires, idOrSignature, signature, ...rest] = token.split(".");
+  if (!/^\d{10,16}$/.test(expires) || !idOrSignature || rest.length || Number(expires) <= now) return undefined;
+  // Older cookies have no ID. Let them expire normally and allow them to be revoked as well.
+  if (signature !== undefined && !/^[\w-]{22}$/.test(idOrSignature)) return undefined;
+  const proof = signature ?? idOrSignature;
+  if (!/^[\w-]{43}$/.test(proof)) return undefined;
+  const expected = sign(signature === undefined ? expires : `${expires}.${idOrSignature}`);
+  return timingSafeEqual(Buffer.from(proof), Buffer.from(expected)) ? Number(expires) : undefined;
 }
 
 export function validAdminToken(token: string | undefined, now = Date.now()) {
-  if (!token) return false;
-  const [expires, signature, ...rest] = token.split(".");
-  if (!expires || !signature || rest.length || !/^\d{10,16}$/.test(expires) || Number(expires) < now) return false;
-  const expected = sign(expires);
-  return signature.length === expected.length && timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  return !!token && signedExpiry(token, now) !== undefined &&
+    !database().prepare("SELECT 1 FROM revoked_admin_sessions WHERE token_hash = ?").get(digest(token).toString("hex"));
+}
+
+export function revokeAdminToken(token: string | undefined) {
+  if (!token) return;
+  const now = Date.now();
+  const expiry = signedExpiry(token, now);
+  if (expiry === undefined) return;
+  const db = database();
+  db.prepare("DELETE FROM revoked_admin_sessions WHERE expires_at <= ?").run(now);
+  db.prepare("INSERT OR IGNORE INTO revoked_admin_sessions (token_hash, expires_at) VALUES (?, ?)").run(digest(token).toString("hex"), expiry);
 }
 
 export const isAdmin = (request: NextRequest) => validAdminToken(request.cookies.get(adminCookie)?.value);

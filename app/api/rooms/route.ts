@@ -1,12 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isAdmin } from "../../admin-auth";
-import { isMemberOf, joinRoom, RoomError } from "../../room-store";
+import { isMemberOf, joinRoom, listOwnedRooms, RoomError } from "../../room-store";
 import { isOpen } from "../../site-lock";
 import { cookieName, getSession, noStore, readBody, roomResponse } from "../../room-http";
 import { assertNotThrottled, recordMiss } from "../../room-guard";
 import { cleanCodeInput, codeRules, isCustomCode, isRoomId, normalizeRoomId } from "../../room-shared";
 
 export const runtime = "nodejs";
+
+export function GET(request: NextRequest) {
+  try {
+    return Response.json({ rooms: listOwnedRooms(getSession(request)) }, { headers: noStore });
+  } catch (error) {
+    return roomResponse(error);
+  }
+}
 
 /**
  * Join a room ({ name, roomId }) or start one ({ name }, optionally with { code } to choose its code).

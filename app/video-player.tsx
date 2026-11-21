@@ -40,6 +40,7 @@ type VideoPlayerProps = {
   overlay?: ReactNode;
   /** Opens the message box. The room panel is out of sight in full screen and on a sideways phone, so the player offers it. */
   onChat?: () => void;
+  leaveControl?: ReactNode;
 };
 
 type FullscreenVideo = HTMLVideoElement & {
@@ -124,7 +125,7 @@ function unlockOrientation() {
 const PlayerSettings = dynamic(() => import("./player-settings").then(module => module.PlayerSettings));
 const SubtitlesPanel = dynamic(() => import("./subtitles-panel").then(module => module.SubtitlesPanel));
 
-function VideoPlayerView({ title, source, kind, poster, captions, room, media, lite, quality, onQuality, overlay, onChat }: VideoPlayerProps) {
+function VideoPlayerView({ title, source, kind, poster, captions, room, media, lite, quality, onQuality, overlay, onChat, leaveControl }: VideoPlayerProps) {
   countRender("player");
   const i18n = useI18n();
   const { t, tn, locale, say } = i18n;
@@ -553,6 +554,7 @@ function VideoPlayerView({ title, source, kind, poster, captions, room, media, l
           ))}
         </video>
         {overlay}
+        {leaveControl && <div className="player-leave">{leaveControl}</div>}
         <SubtitleLayer videoRef={videoRef} list={subs.list} enabled={subs.index >= 0 && !nativeFullscreen} preview={subsOpen} />
         {/* While the Subtitles panel shows its sample line, the host's idle play button would sit right behind it. It steps aside
             (Play is still in the row of buttons). A viewer's "tap to join" or "rejoin" always stays: missing it means missing the film. */}

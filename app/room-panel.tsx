@@ -4,11 +4,10 @@ import { countRender } from "./debug-renders";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DefaultPasswordNotice, useDefaultPasswordNotice } from "./admin-ui";
 import { ChatComposer, type ComposerHandle } from "./chat-composer";
-import { ConfirmButton } from "./confirm-button";
 import { MessageText, mentionsName } from "./chat-text";
 import dynamic from "next/dynamic";
 import type { DeviceProfile } from "./device";
-import { problemOf, useI18n, type Problem } from "./i18n";
+import { useI18n } from "./i18n";
 import { useListPresence, usePresence } from "./motion";
 import { useRoving } from "./roving";
 import { isCustomCode, type RoomCommand, type RoomMessage, type RoomSnapshot } from "./room-shared";
@@ -73,22 +72,18 @@ function PeopleList({ room, isHost, onMention }: { room: RoomSnapshot; isHost: b
   );
 }
 
-export function RoomPanel({ room, identityName, isHost, send, onLeave, onLeft, quality, onQuality, profile, replyRequest }: {
+export function RoomPanel({ room, identityName, isHost, send, quality, onQuality, profile, replyRequest }: {
   room: RoomSnapshot;
   identityName?: string;
   isHost: boolean;
   send: (command: RoomCommand) => Promise<void>;
-  /** Leaves the room; answers whether the room closed because this person was the last one in it. */
-  onLeave: () => Promise<boolean>;
-  /** Called once leaving the room has worked. */
-  onLeft: (closed: boolean) => void;
   quality: Quality;
   onQuality: (quality: Quality) => void;
   profile: DeviceProfile;
   /** Set when someone taps a chat bubble: open the chat with "@name " typed and the cursor in the message box. */
   replyRequest?: { name: string; n: number };
 }) {
-  const { t, tn, say } = useI18n();
+  const { t, tn } = useI18n();
   countRender("panel");
   const defaultPassword = useDefaultPasswordNotice();
   const me = room.members.find(member => member.id === room.youId)?.name ?? identityName ?? "";
@@ -105,21 +100,6 @@ export function RoomPanel({ room, identityName, isHost, send, onLeave, onLeft, q
   const copied = copyState === "copied";
   const inviteField = useRef<HTMLInputElement>(null);
   const [codeCopied, setCodeCopied] = useState(false);
-  // Leaving asks for a second tap, and says what it means for the host.
-  const [leaveStep, setLeaveStep] = useState<"idle" | "confirm" | "busy">("idle");
-  const [leaveError, setLeaveError] = useState<Problem>();
-  useEffect(() => {
-    if (leaveStep !== "confirm") return;
-    const timer = setTimeout(() => setLeaveStep("idle"), 6000);
-    return () => clearTimeout(timer);
-  }, [leaveStep]);
-  async function leave() {
-    if (leaveStep === "busy") return;
-    if (leaveStep === "idle") { setLeaveStep("confirm"); setLeaveError(undefined); return; }
-    setLeaveStep("busy");
-    try { onLeft(await onLeave()); }
-    catch (reason) { setLeaveError(problemOf(reason, "err.request.failed")); setLeaveStep("idle"); }
-  }
   const [seenId, setSeenId] = useState(lastId);
   const [atBottom, setAtBottom] = useState(true);
   const [toast, setToast] = useState<Toast>();
@@ -320,17 +300,6 @@ export function RoomPanel({ room, identityName, isHost, send, onLeave, onLeft, q
           {copyState === "manual" && <p className="sheet-note" role="status">{t("people.copyManual")}</p>}
           <PeopleList room={room} isHost={isHost} onMention={mention} />
           <p className="sheet-note">{isHost ? t("people.signedInHost", { name: identityName ?? "" }) : t("people.signedInViewer", { name: identityName ?? "" })}</p>
-          {isHost && room.members.length > 1 && <p className="sheet-note">{t("leave.hostNote")}</p>}
-          {/* Sticks to the bottom of the pane, so Leave is reachable without scrolling the whole list. */}
-          <div className="leave-bar">
-            <ConfirmButton
-              className="leave-room" confirming={leaveStep !== "idle"} disabled={leaveStep === "busy"}
-              label={leaveStep === "busy" ? t("leave.busy") : t("leave.button")} sureLabel={leaveStep === "busy" ? t("leave.busy") : t("leave.sure")}
-              aria={t("leave.button")} sureAria={isHost && room.members.length > 1 ? t("leave.confirmHost") : t("leave.confirm")}
-              onClick={() => void leave()}
-            />
-            {leaveError && <p className="room-error" role="alert">{say(leaveError)}</p>}
-          </div>
         </div>
       )}
     </aside>
